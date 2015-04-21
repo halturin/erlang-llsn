@@ -1,0 +1,12 @@
+.rebar
+deps/*
+priv
+log
+ebin/*
+*.beam
+.eunit
+rel/synapse*
+rel/local*
+*.dump
+priv
+log

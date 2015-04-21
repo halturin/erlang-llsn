@@ -1,0 +1,8 @@
+{application, llsn,
+ [
+  {description, "LLSN format encoder/decoder"},
+  {vsn, git},
+  {modules, []},
+  {registered, []},
+  {applications, [ kernel, stdlib ]}
+ ]}.
