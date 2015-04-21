@@ -129,7 +129,7 @@ encode_ext(Packet, Struct, #options{threshold = Threshold} = Options) ->
     Bin = <<Threshold:16/big-integer, LenBin/binary>>,
 
     Opts = #options{
-            framesize    = 2 + LenBinLen, % первые 2 байта содержат трешхолд + N байт на кол-во элементов
+            framesize    = 2 + LenBinLen, % first 2 bytes for threshold + N bytes for the number of elements
             struct       = Struct
             },
     
@@ -157,21 +157,18 @@ framing(Bin, Opts, Value, ValueLen) ->
     { <<Bin/binary, Value/binary>>, Opts#options{framesize = Opts#options.framesize + ValueLen} }.
 
 
+
+
 encode_struct(Value, Struct, Bin, Options) ->
     ok.
 
 
 
-% encode tab:
-% 1111 1111   [.... 8 байт ....]           - 64 битное
-% 1111 1110   [.... 7 байт ....]           - 56 битное
-% 1111 110 .  [1 бит  + .... 6 байт ....]  - 49 битное
-% 1111 10 ..  [2 бита + .... 5 байт ....]  - 42 битное
-% 1111 0 ...  [3 бита + .... 4 байта ....] - 35 битное
-% 1110  ....  [4 бита + .... 3 байта ....] - 28 битное
-% 110.  ....  [5 бит  + .... 2 байта ....] - 21 битное
-% 10..  ....  [6 бит  + .... 1 байт ....]  - 14 битное
-% 0...  ....  [7 бит]                      - 7 битное число
+
+
+
+
+
 encode_NUMBER(Value) when 0 > Value ->
     NValue = Value * -1,
     encode_number(Value, NValue);
@@ -215,18 +212,6 @@ encode_number(Value, NValue) when NValue band 16#7fffffffffffff == NValue ->
 encode_number(Value, NValue) ->
     { <<16#ff:8/big-unsigned-integer,Value:64/big-signed-integer>>, 9 }.
 
-
-% encode tab:
-% 1111 1111   [.... 8 байт ....]           - 64 битное
-% 1111 1110   [.... 7 байт ....]           - 56 битное
-% 1111 110 .  [1 бит  + .... 6 байт ....]  - 49 битное
-% 1111 10 ..  [2 бита + .... 5 байт ....]  - 42 битное
-% 1111 0 ...  [3 бита + .... 4 байта ....] - 35 битное
-% 1110  ....  [4 бита + .... 3 байта ....] - 28 битное
-% 110.  ....  [5 бит  + .... 2 байта ....] - 21 битное
-% 10..  ....  [6 бит  + .... 1 байт ....]  - 14 битное
-% 0...  ....  [7 бит]                      - 7 битное число
-
 % 2^7 - 1
 encode_UNUMBER(Value) when Value band 16#7f == Value ->
     { <<16#0:1/big-unsigned-integer,Value:7/big-unsigned-integer>>, 1 };
@@ -264,17 +249,17 @@ encode_UNUMBER(Value) ->
     { <<16#ff:8/big-unsigned-integer,Value:64/big-unsigned-integer>>, 9 }.
 
 
-encode_float_exp(Value, N, Pow) ->
+encode_float(Value, N, Pow) ->
     V  = Value * Pow,
     TV = trunc(V),
     if TV == V ->
             {N, TV};
         true ->
-            encode_float_exp(Value, N+1, Pow*10)
+            encode_float(Value, N+1, Pow*10)
     end.
 
 encode_FLOAT(Value) ->
-    {P,M}    = encode_float_exp(Value, 1, 10),
+    {P,M}    = encode_float(Value, 1, 10),
     {BP, PL} = encode_UNUMBER(P),
     {BM, ML} = encode_NUMBER(M),
     {<<BP/binary,BM/binary>>, PL+ML}.
