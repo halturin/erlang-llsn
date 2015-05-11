@@ -83,14 +83,14 @@ llsn_encodeComplexStruct_test() ->
     % ?assert(Bin =:= ValueBin).
     ok.
 llsn_encodeComplexStruct_with_Framing_test() ->
-    true.
+    ok.
 
 llsn_decodeComplexStruct_test() ->
     ValueBin = get_exampleMainValueEncoded(),
     Value = llsn:decode(ValueBin),
-    % MainValue = get_exampleMainValue(),
-    % ?assert(Value =:= MainValue).
-    true.
+    MainValue = get_exampleMainValue(),
+    ?assert(Value =:= MainValue).
+    
 llsn_decodeComplexStruct_with_Framing_test() ->
     ok.
 

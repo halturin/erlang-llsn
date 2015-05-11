@@ -24,6 +24,8 @@
 
 -export([encode_NUMBER/1, encode_UNUMBER/1]).
 
+-export([decode/1]).
+
 -export([decode_NUMBER/1, decode_UNUMBER/1]).
 
 -define(DBG(Format), io:format("~p:~p: " ++ Format, [?MODULE, ?LINE])).
