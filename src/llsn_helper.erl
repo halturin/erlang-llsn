@@ -1,23 +1,21 @@
+%% Erlang support for LLSN - Allyst's data interchange format.
+%% LLSN specification http://allyst.org/opensource/llsn/
 %%
-%% Allyst ™  - Universal Integration Platform, http://allyst.com
+%% This program is free software; you can redistribute it and/or modify
+%% it under the terms of the GNU General Public License as published by
+%% the Free Software Foundation; either version 3 of the License, or
+%% (at your option) any later version.
 %%
-%% CONFIDENTIAL NOTICE:
+%% This program is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU Library General Public License for more details.
 %%
-%% All information contained herein is, and remains the property
-%% of Allyst Inc. and its suppliers, if any. The intellectual
-%% and technical concepts contained herein are proprietary to
-%% Allyst Inc. and its suppliers and may be covered by U.S.
-%% and Foreign Patents, patents in process, and are protected by trade
-%% secret or copyright law. Dissemination of this information
-%% or reproduction of this material is strictly forbidden unless prior
-%% written permission is obtained from Allyst Inc.
+%% Full license: https://github.com/allyst/go-llsn/blob/master/LICENSE
 %%
-%% @copyright 2015 Allyst Inc. http://allyst.com
-%%
-%% @author Taras Halturin <halturin@allyst.com>
-%% @doc
-%%      FIXME
-%% @end
+%% copyright (C) 2014 Allyst Inc. http://allyst.com
+%% author Taras Halturin <halturin@allyst.com>
+
 -module(llsn_helper).
 
 -export([reload/0]).

@@ -24,6 +24,33 @@
 
 -export([encode_NUMBER/1]).
 
+% encode options
+-record (options, {
+    % threshold for the huge data (string, blob, file). put it to the end of packet
+    threshold :: non_neg_integer(), 
+    pid, % send frames of the encoded data to the PID
+    framesize, % frame size limit 
+    frame :: non_neg_integer(), % frame number
+    binsize, % current size of encoded data
+    userdata :: list(), % use it with framing encode data
+    tail, % list of the huge items
+    stack, % needs for incapsulated structs/arrays
+    struct, % needs for POINTER type processing
+    tt % tree of the types
+}).
+
+-record (typestree, {
+    type        :: non_neg_integer,
+    length      :: non_neg_integer(),
+    parent,
+    child,
+    prev,
+    next,
+    nullflag                  
+}).
+
+
+
 %% =============================================================================
 %% Encoding
 %% =============================================================================
@@ -115,7 +142,7 @@ encode(Packet, Struct, PID, FrameLimit, UserData) when is_pid(PID)
         tail = [],
         stack = [],
         pid = PID,
-        userdata = UserData,
+        userdata = UserData, % using on encoding frames to help identify by PID
         tt = typestree(new)
     },
     encode_ext(Packet, Struct, Options).
@@ -265,21 +292,254 @@ encode_FLOAT(Value) ->
     {<<BP/binary,BM/binary>>, PL+ML}.
 
 
-typestree(new) ->
-    #typestree{ 
+% get GMT offset
+% calendar:time_difference(calendar:universal_time(), calendar:local_time()).
+% {0,{4,0,0}}
+
+encode_DATE({{Year, Month, Day},
+                {Hour, Min, Sec, MSec},
+                {OffsetHour, OffsetMin}} = Date) ->
+    {<<Year:16/big-integer,
+            Month:4/big-unsigned-integer,
+            Day:5/big-unsigned-integer,
+            Hour:5/big-unsigned-integer,
+            Min:6/big-unsigned-integer,
+            Sec:6/big-unsigned-integer,
+            MSec:10/big-unsigned-integer,
+            OffsetHour:6/big-integer,
+            OffsetMin:6/big-unsigned-integer>>, 8}.
+
+encode_BOOL(true) -> {<<1:8/big-unsigned-integer>>, 1};
+encode_BOOL(_)    -> {<<0:8/big-unsigned-integer>>, 1}.
+
+
+%% =============================================================================
+%% Decoding
+%% =============================================================================
+decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer, 
+                Data1/binary>>) ->
+    case decode_UNUMBER(Data1) of
+        {parted, _} ->
+            {parted, {Data1}};
+        {N, Data} ->
+            Opts = #dopts{threshold = Threshold,
+                    stack     = [],
+                    tail      = [],
+                    find      = ?LLSN_NULL,
+                    tt        = typestree NEW},
+            decode_struct([], Data, N, Opts)
+    end.
+
+%% =============================================================================
+%% Numbers
+%% =============================================================================
+decode_NUMBER_DEBUG(<<Num:64/big-signed-integer, DataTail/binary>>) ->
+    {Num, DataTail};
+decode_NUMBER_DEBUG(Data) ->
+    {parted, Data}.
+
+% decode number tab:
+% 1111 1111   [.... 8 байт ....]           - 64 битное
+% 1111 1110   [.... 7 байт ....]           - 56 битное
+% 1111 110 .  [1 бит  + .... 6 байт ....]  - 49 битное
+% 1111 10 ..  [2 бита + .... 5 байт ....]  - 42 битное
+% 1111 0 ...  [3 бита + .... 4 байта ....] - 35 битное
+% 1110  ....  [4 бита + .... 3 байта ....] - 28 битное
+% 110.  ....  [5 бит  + .... 2 байта ....] - 21 битное
+% 10..  ....  [6 бит  + .... 1 байт ....]  - 14 битное
+% 0...  ....  [7 бит]                      - 7 битное число
+decode_NUMBER(Data) ->
+    % decode signed number
+    decode_NUMBER(signed, Data).
+
+decode_UNUMBER(Data) ->
+    % decode unsigned number
+    decode_NUMBER(unsigned, Data).
+
+decode_NUMBER(unsigned, <<2#0:1/big-unsigned-integer,        Num:7/big-unsigned-integer,  Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#0:1/big-unsigned-integer,        Num:7/big-signed-integer,    Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(unsigned, <<2#10:2/big-unsigned-integer,       Num:14/big-unsigned-integer, Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#10:2/big-unsigned-integer,       Num:14/big-signed-integer,   Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(unsigned, <<2#110:3/big-unsigned-integer,      Num:21/big-unsigned-integer, Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#110:3/big-unsigned-integer,      Num:21/big-signed-integer,   Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(unsigned, <<2#1110:4/big-unsigned-integer,     Num:28/big-unsigned-integer, Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#1110:4/big-unsigned-integer,     Num:28/big-signed-integer,   Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(unsigned, <<2#11110:5/big-unsigned-integer,    Num:35/big-unsigned-integer, Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#11110:5/big-unsigned-integer,    Num:35/big-signed-integer,   Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(unsigned, <<2#111110:6/big-unsigned-integer,   Num:42/big-unsigned-integer, Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#111110:6/big-unsigned-integer,   Num:42/big-signed-integer,   Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(unsigned, <<2#1111110:7/big-unsigned-integer,  Num:49/big-unsigned-integer, Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#1111110:7/big-unsigned-integer,  Num:49/big-signed-integer,   Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(unsigned, <<2#11111110:8/big-unsigned-integer, Num:56/big-unsigned-integer, Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#11111110:8/big-unsigned-integer, Num:56/big-signed-integer,   Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(unsigned, <<2#11111111:8/big-unsigned-integer, Num:64/big-unsigned-integer, Tail/binary>>) -> {Num, Tail};
+decode_NUMBER(signed,   <<2#11111111:8/big-unsigned-integer, Num:64/big-signed-integer,   Tail/binary>>) -> {Num, Tail};
+
+decode_NUMBER(_,   Data) -> {parted, Data}.
+
+%% =============================================================================
+%% Floats
+%% =============================================================================
+% decode_FLOAT(<<Float:64/big-float, Tail/binary>>) -> {Float, Tail};
+% decode_FLOAT(Data)                                -> {parted, Data}.
+
+
+decode_FLOAT(Data) ->
+    case decode_UNUMBER(Data) of
+        {parted, _} ->
+            {parted, Data};
+        {Pow, Tail1} ->
+            case decode_NUMBER(Tail1) of
+                {parted, _} ->
+                    {parted, Data};
+                {N, Tail2} ->
+                    {N/(math:pow(10,Pow)), Tail2}
+            end
+    end.
+
+%% =============================================================================
+%% Strings
+%% =============================================================================
+decode_STRING(Data, Opts) ->
+    case decode_UNUMBER(Data) of
+        {parted, _}     ->
+            {parted, Data, Opts};
+        {Len, DataTail} ->
+            if Len > Opts#dopts.threshold, Opts#dopts.threshold > 0 ->
+                    Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {string, Len} ])},
+                    {tail, DataTail, Opts1};
+                true ->
+                    case DataTail of
+                        <<BinStrValue:Len/binary-unit:8, DataTail1/binary>> ->
+                            StrValue = unicode:characters_to_list(BinStrValue, utf8),
+                            {StrValue, DataTail1, Opts};
+                        _ ->
+                            {parted, Data, Opts}
+                    end
+            end
+    end.
+
+%% =============================================================================
+%% Blobs
+%% =============================================================================
+decode_BLOB(Data, Opts) ->
+    case decode_UNUMBER(Data) of
+        {parted, _} ->
+            {parted, Data, Opts};
+        {Len, DataTail} ->
+            if Len > Opts#dopts.threshold, Opts#dopts.threshold > 0 ->
+                    Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {blob, Len} ])},
+                    {tail, DataTail, Opts1};
+                true ->
+                    case DataTail of
+                        <<Value:Len/binary-unit:8, DataTail1/binary>> ->
+                            {Value, DataTail1, Opts};
+                        _ ->
+                            {parted, Data, Opts}
+                    end
+            end
+    end.
+
+%% =============================================================================
+%% Files
+%% =============================================================================
+% FIXME
+decode_FILE(Data, Opts) ->
+    {file, Data, Opts}.
+
+
+%% =============================================================================
+%% Dates
+%% =============================================================================
+% 2B: year. (-32767..32768), знак определяет эпоху AC/BC
+%   :4b month (1..12)
+%   :5b day of month (1..31)
+%   :5b hour (0..23)
+%   :6b min (0..59)
+%   :6b sec (0..59)
+%   :10 msec (0..999)
+%   :6b hours offset (signed)
+%   :6b min offset (unsigned)
+%   -- :48bit
+% --
+% 8B total
+decode_DATE(<<Year:16/big-signed-integer,
+                Month:4/big-unsigned-integer,
+                Day:5/big-unsigned-integer,
+                Hour:5/big-unsigned-integer,
+                Min:6/big-unsigned-integer,
+                Sec:6/big-unsigned-integer,
+                MSec:10/big-unsigned-integer,
+                OffsetHour:6/big-integer,
+                OffsetMin:6/big-unsigned-integer, DataTail/binary>>) ->
+    {{{Year, Month, Day}, {Hour, Min, Sec, MSec}, {OffsetHour, OffsetMin}}, 
+     DataTail};
+decode_DATE(Data) ->
+    {parted, Data}.
+
+%% =============================================================================
+%% Booleans
+%% =============================================================================
+decode_BOOL(<<0:8/big-unsigned-integer, DataTail/binary>>) -> {false, DataTail};
+decode_BOOL(<<1:8/big-unsigned-integer, DataTail/binary>>) -> {true, DataTail};
+decode_BOOL(Data)                                          -> {parted, Data}.
+
+
+
+%% =============================================================================
+%% Booleans
+%% =============================================================================
+
+typesTree(new) ->
+    #typestree{
         type     = ?LLSN_NULL,
         length   = ?LLSN_NULL,
-
-        parent   = ?LLSN_NULL,
+        
         child    = ?LLSN_NULL,
+        parent   = ?LLSN_NULL,
         prev     = ?LLSN_NULL,
-        next     = ?LLSN_NULL }.
+        next     = ?LLSN_NULL,
+        
+        nullflag = ?LLSN_NULL}.
 
-typestree(append, Parent, Type) ->
-    ok;
+typesTree(next, Current) ->
+    case Current#typestree.next of
+        ?LLSN_NULL ->
+            TT = typesTree(new),
+            TT#typestree{
+                prev     = Current,
+                parent   = Current#typestree.parent,
+                nullflag = Current#typestree.nullflag};
+        TT ->
+            TT#typestree{
+                prev     = Current,
+                parent   = Current#typestree.parent,
+                nullflag = Current#typestree.nullflag};
+    end;
 
-typestree(addchild, Parent, Type) ->
-    ok.
+typesTree(child, Parent) ->
+    case Current#typestree.child of
+        ?LLSN_NULL ->
+            TT = typesTree(new),
+            TT#typestree{
+                parent   = Current,
+                nullflag = Current#typestree.nullflag};
+        TT ->
+            TT#typestree{
+                parent   = Current,
+                nullflag = Current#typestree.nullflag};
+    end;
 
-typestree(type, Type) ->
-    ok.
+typesTree(Mode, Current, Type) ->
+    typesTree(Mode, Current#typestree{type = Type});
+ 
+typesTree(Mode, Current, Type, Len) ->
+    typesTree(Mode, Current#typestree{type = Type, length = Len});
