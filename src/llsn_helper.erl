@@ -13,7 +13,7 @@
 %%
 %% Full license: https://github.com/allyst/go-llsn/blob/master/LICENSE
 %%
-%% copyright (C) 2014 Allyst Inc. http://allyst.com
+%% copyright (C) 2015 Allyst Inc. http://allyst.com
 %% author Taras Halturin <halturin@allyst.com>
 
 -module(llsn_helper).

@@ -54,3 +54,39 @@
 -define(LLSN_TYPE_STRING_MAXBYTES,      10485760).
 -define(LLSN_TYPE_BLOB_MAXBYTES,      4294967296).
 
+
+-record(llsn_date_d, {
+    year    :: integer(),
+    month   :: non_neg_integer(),
+    day     :: non_neg_integer()
+    }
+).
+
+-record(llsn_date_t, {
+    hour    :: non_neg_integer(), 
+    min     :: non_neg_integer(),
+    sec     :: non_neg_integer(),
+    msec    :: non_neg_integer() %% up to 999
+    }
+).
+
+-record(llsn_date_tz, {
+    hour    :: integer(), 
+    min     :: non_neg_integer()
+    }
+).
+
+-record (llsn_date, {
+    date,
+    time,
+    zone
+    }
+).
+
+-record(llsn_file, {
+    name    :: string(),
+    tmpname :: string(),    %% temporary filename. using on decode files.
+    f                       %% file descriptor file:open(...)
+    }
+).
+           

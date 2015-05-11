@@ -13,7 +13,7 @@
 %%
 %% Full license: https://github.com/allyst/go-llsn/blob/master/LICENSE
 %%
-%% copyright (C) 2014 Allyst Inc. http://allyst.com
+%% copyright (C) 2015 Allyst Inc. http://allyst.com
 %% author Taras Halturin <halturin@allyst.com>
 
 -module(llsn).
@@ -22,10 +22,15 @@
 
 -export([encode/2, encode/3, encode/4, encode/5]).
 
--export([encode_NUMBER/1]).
+-export([encode_NUMBER/1, encode_UNUMBER/1]).
+
+-export([decode_NUMBER/1, decode_UNUMBER/1]).
+
+-define(DBG(Format), io:format("~p:~p: " ++ Format, [?MODULE, ?LINE])).
+
 
 % encode options
--record (options, {
+-record(options, {
     % threshold for the huge data (string, blob, file). put it to the end of packet
     threshold :: non_neg_integer(), 
     pid, % send frames of the encoded data to the PID
@@ -39,14 +44,14 @@
     tt % tree of the types
 }).
 
--record (typestree, {
-    type        :: non_neg_integer,
+-record(typestree, {
+    type        :: non_neg_integer(),
     length      :: non_neg_integer(),
     parent,
     child,
     prev,
     next,
-    nullflag                  
+    nullflag
 }).
 
 
@@ -64,7 +69,7 @@ encode(Packet, Struct) when is_tuple(Packet) and is_tuple(Struct) ->
         binsize = 0,
         tail = [],
         stack = [],
-        tt = typestree(new)
+        tt = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
@@ -79,7 +84,7 @@ encode(Packet, Struct, PID) when is_pid(PID)
         tail = [],
         stack = [],
         pid = PID,
-        tt = typestree(new)
+        tt = typesTree(new)
     },
     encode_ext(Packet, Struct, Options);
 
@@ -94,7 +99,7 @@ encode(Packet, Struct, Threshold) when is_integer(Threshold)
         binsize = 0,
         tail = [],
         stack = [],
-        tt = typestree(new)
+        tt = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
@@ -110,7 +115,7 @@ encode(Packet, Struct, PID, UserData) when is_pid(PID)
         stack = [],
         pid = PID,
         userdata = UserData,
-        tt = typestree(new)
+        tt = typesTree(new)
     },
     encode_ext(Packet, Struct, Options);
 
@@ -126,7 +131,7 @@ encode(Packet, Struct, PID, FrameLimit) when is_pid(PID)
         tail = [],
         stack = [],
         pid = PID,
-        tt = typestree(new)
+        tt = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
@@ -143,12 +148,12 @@ encode(Packet, Struct, PID, FrameLimit, UserData) when is_pid(PID)
         stack = [],
         pid = PID,
         userdata = UserData, % using on encoding frames to help identify by PID
-        tt = typestree(new)
+        tt = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
 
-encode_ext(Packet, Struct, #options{threshold = Threshold} = Options) ->
+encode_ext(Packet, Struct, #options{threshold = Threshold} = Opts) ->
 
     P   = tuple_to_list(Packet),
     Len = length(P),
@@ -316,19 +321,77 @@ encode_BOOL(_)    -> {<<0:8/big-unsigned-integer>>, 1}.
 %% =============================================================================
 %% Decoding
 %% =============================================================================
+
+% decode options
+-record(dopts, {threshold :: non_neg_integer(),
+                tail,
+                stack,
+                tt % typestree
+               }).
+
+
+% Support version 1 
 decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer, 
-                Data1/binary>>) ->
-    case decode_UNUMBER(Data1) of
+                Data/binary>>) when V == 1 ->
+    ?DBG("HELLO"),
+    case decode_UNUMBER(Data) of
         {parted, _} ->
-            {parted, {Data1}};
-        {N, Data} ->
+            {parted, {Data}};
+        {N, Data1} ->
             Opts = #dopts{threshold = Threshold,
                     stack     = [],
                     tail      = [],
-                    find      = ?LLSN_NULL,
-                    tt        = typestree NEW},
-            decode_struct([], Data, N, Opts)
-    end.
+                    tt        = typesTree(new)},
+            decode_struct([], Data1, N, Opts)
+    end;
+
+% unsupported version of LLSN
+decode(Data) ->
+    {unsupported, Data}.
+
+
+decode_struct(Value, Data, 0, Opts) ->
+    case Opts#dopts.stack of
+        [] ->
+            % stack is done. tail processing
+            case Opts#dopts.tail of
+                [] ->
+                    % done
+                    list_to_tuple(lists:reverse(Value));
+                    
+
+                [{flat,TailH} | TailT] ->
+                    ?DBG("Tail handling"),
+                    NOpts = Opts#dopts{tail = TailT},
+                    decode_struct(Value, Data, 0, NOpts);
+
+                [{file, _File} | TailT] ->
+                    %  доделать нормальную обработку файла
+                    ?DBG("FIXME. Tail handling. Process file"),
+                    FTMP = <<"fffiiillleee">>,
+                    NOpts = Opts#dopts{tail = TailT},
+                    decode_struct(Value, Data, 0, NOpts)
+
+            end;
+        [{StackValue, StackN} | StackT] ->
+            ?DBG("########### Pop from Stack"),
+            TT = typesTree(parent, Opts#dopts.tt),
+            NValue =    case TT#typestree.type of
+                            TType when  TType == ?LLSN_TYPE_STRUCT ->
+                                [list_to_tuple(lists:reverse(Value)) | StackValue];
+                            _ ->
+                                [lists:reverse(Value) | StackValue]
+                        end,
+
+            NOpts = Opts#dopts{stack = StackT, tt = TT},
+            decode_struct(NValue, Data, StackN, NOpts)
+    end;
+
+
+decode_struct(Value, Data, N, Opts) ->
+ok.
+
+
 
 %% =============================================================================
 %% Numbers
@@ -522,10 +585,10 @@ typesTree(next, Current) ->
             TT#typestree{
                 prev     = Current,
                 parent   = Current#typestree.parent,
-                nullflag = Current#typestree.nullflag};
+                nullflag = Current#typestree.nullflag}
     end;
 
-typesTree(child, Parent) ->
+typesTree(child, Current) ->
     case Current#typestree.child of
         ?LLSN_NULL ->
             TT = typesTree(new),
@@ -535,11 +598,20 @@ typesTree(child, Parent) ->
         TT ->
             TT#typestree{
                 parent   = Current,
-                nullflag = Current#typestree.nullflag};
+                nullflag = Current#typestree.nullflag}
     end;
 
+typesTree(parent, Current) ->
+    case Current#typestree.prev of
+        ?LLSN_NULL ->
+            Current#typestree.parent;
+        Prev->
+            typesTree(start, Prev#typestree{next = Current,
+                    parent = Current#typestree.parent})
+    end.
+
 typesTree(Mode, Current, Type) ->
-    typesTree(Mode, Current#typestree{type = Type});
+    typesTree(Mode, Current#typestree{type = Type}).
  
 typesTree(Mode, Current, Type, Len) ->
-    typesTree(Mode, Current#typestree{type = Type, length = Len});
+    typesTree(Mode, Current#typestree{type = Type, length = Len}).
