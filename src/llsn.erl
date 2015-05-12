@@ -335,7 +335,6 @@ encode_BOOL(_)    -> {<<0:8/big-unsigned-integer>>, 1}.
 % Support version 1 
 decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer, 
                 Data/binary>>) when V == 1 ->
-    ?DBG("HELLO"),
     case decode_UNUMBER(Data) of
         {parted, _} ->
             {parted, {Data}};
@@ -344,7 +343,7 @@ decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
                     stack     = [],
                     tail      = [],
                     tt        = typesTree(new)},
-            decode_struct([], Data1, N, Opts)
+            decode_ext([], Data1, N, Opts)
     end;
 
 % unsupported version of LLSN
@@ -352,48 +351,112 @@ decode(Data) ->
     {unsupported, Data}.
 
 
-decode_struct(Value, Data, 0, Opts) ->
-    case Opts#dopts.stack of
+% stack is done. tail processing
+decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
+    case Opts#dopts.tail of
         [] ->
-            % stack is done. tail processing
-            case Opts#dopts.tail of
-                [] ->
-                    % done
-                    list_to_tuple(lists:reverse(Value));
-                    
+            % done
+            list_to_tuple(lists:reverse(Value));
+            
 
-                [{flat,TailH} | TailT] ->
-                    ?DBG("Tail handling"),
-                    NOpts = Opts#dopts{tail = TailT},
-                    decode_struct(Value, Data, 0, NOpts);
+        [{flat,TailH} | TailT] ->
+            ?DBG("Tail handling"),
+            NOpts = Opts#dopts{tail = TailT},
+            decode_ext(Value, Data, 0, NOpts);
 
-                [{file, _File} | TailT] ->
-                    %  доделать нормальную обработку файла
-                    ?DBG("FIXME. Tail handling. Process file"),
-                    FTMP = <<"fffiiillleee">>,
-                    NOpts = Opts#dopts{tail = TailT},
-                    decode_struct(Value, Data, 0, NOpts)
+        [{file, _File} | TailT] ->
+            %  доделать нормальную обработку файла
+            ?DBG("FIXME. Tail handling. Process file"),
+            FTMP = <<"fffiiillleee">>,
+            NOpts = Opts#dopts{tail = TailT},
+            decode_ext(Value, Data, 0, NOpts)
 
-            end;
-        [{StackValue, StackN} | StackT] ->
-            ?DBG("########### Pop from Stack"),
-            TT = typesTree(parent, Opts#dopts.tt),
-            NValue =    case TT#typestree.type of
-                            TType when  TType == ?LLSN_TYPE_STRUCT ->
-                                [list_to_tuple(lists:reverse(Value)) | StackValue];
-                            _ ->
-                                [lists:reverse(Value) | StackValue]
-                        end,
-
-            NOpts = Opts#dopts{stack = StackT, tt = TT},
-            decode_struct(NValue, Data, StackN, NOpts)
     end;
 
+% stack processing
+decode_ext(Value, Data, 0, Opts) ->
+    ?DBG("########### Pop from Stack"),
+    [{StackValue, StackN} | StackT] = Opts#dopts.stack,
+    
+    TT      = typesTree(parent, Opts#dopts.tt),
+    NValue  = case TT#typestree.type of
+                 TType when  TType == ?LLSN_TYPE_STRUCT ->
+                     [list_to_tuple(lists:reverse(Value)) | StackValue];
+                 _ ->
+                     [lists:reverse(Value) | StackValue]
+              end,
 
-decode_struct(Value, Data, N, Opts) ->
-ok.
+    NOpts   = Opts#dopts{stack = StackT, tt = TT},
 
+    decode_ext(NValue, Data, StackN, NOpts);
+    
 
+decode_ext(Value, Data, N, Opts) ->
+    ?DBG("decode_ext"),
+
+    case decode_skipnull(Data, N, Opts) of
+        % null value. skip it.
+        {true, Data1, Opts1} ->
+            decode_ext([?LLSN_NULL|Value], Data1, N-1, Opts1);
+
+        % Not enough data to decode packet. 
+        parted ->
+            {parted, {Value, Data, N, Opts}};
+
+        % decode value
+        {false, Data1, Opts1} ->
+
+        TT = Opts1#dopts.tt,
+        if TT#typestree.type == ?LLSN_TYPE_UNDEFINED ->
+            case readbin(Data1, 1) of 
+                parted ->
+                    Type = parted;
+                {<<Type:8/big-unsigned-integer>>,Data2} ->
+                    pass
+            end;
+        true ->
+            Type    = TT#typestree.type,
+            Data2   = Data1
+        end,
+
+        case Type of
+            parted ->
+                {parted, {Value, Data1, N, Opts1}};
+
+            ?LLSN_TYPE_NUMBER ->
+                ok;
+
+            ?LLSN_TYPE_UNUMBER ->
+                ok;
+
+            ?LLSN_TYPE_FLOAT ->
+                ok;
+
+            ?LLSN_TYPE_STRING ->
+                ok;
+
+            ?LLSN_TYPE_DATE ->
+                ok;
+
+            ?LLSN_TYPE_BOOL ->
+                ok;
+
+            ?LLSN_TYPE_BLOB ->
+                ok;
+
+            ?LLSN_TYPE_FILE ->
+                ok;
+        
+            ?LLSN_TYPE_STRUCT ->
+                ok;
+
+            Array when Array == ?LLSN_TYPE_ARRAY;
+                       Array == ?LLSN_TYPE_ARRAYN ->
+                ok
+        end
+
+    end.
+    
 
 %% =============================================================================
 %% Numbers
@@ -560,12 +623,12 @@ decode_BOOL(Data)                                          -> {parted, Data}.
 
 
 %% =============================================================================
-%% Booleans
+%% Helpers
 %% =============================================================================
 
 typesTree(new) ->
     #typestree{
-        type     = ?LLSN_NULL,
+        type     = ?LLSN_TYPE_UNDEFINED,
         length   = ?LLSN_NULL,
         
         child    = ?LLSN_NULL,
@@ -617,3 +680,44 @@ typesTree(Mode, Current, Type) ->
  
 typesTree(Mode, Current, Type, Len) ->
     typesTree(Mode, Current#typestree{type = Type, length = Len}).
+
+readbin(Data, Len) ->
+    if length(Data) < Len ->
+        parted;
+    true ->
+        <<Bin:Len/binary-unit:8, Tail>> = Data,
+        {Bin, Tail}
+    end.
+
+% checking for null flags
+decode_skipnull(<<>>, N, Opts) ->
+    parted;
+
+decode_skipnull(Data, N, Opts) 
+    when Opts#dopts.tt#typestree.nullflag == ?LLSN_NULL ->
+    false;
+
+decode_skipnull(Data, N, Opts)
+    when Opts#dopts.tt#typestree.nullflag /= ?LLSN_NULL ->
+    
+    ?DBG("decode_ext with NULL flag"),
+
+    T   = Opts#dopts.tt,
+    Pos = (8 - ((T#typestree.length  - N) rem 8)),
+
+    if Pos == 8 ->
+        <<NF:8/big-unsigned-integer, Data1/binary>>  = Data,
+        TT      = T#typestree{nullflag = NF},
+        Opts1   = Opts#dopts{tt = TT};
+
+    true ->
+        Data1   = Data,
+        TT      = T,
+        Opts1   = Opts
+    end,
+
+    if TT#typestree.nullflag band (1 bsl (Pos - 1)) == 0 ->
+        false;
+    true ->
+        true
+    end.

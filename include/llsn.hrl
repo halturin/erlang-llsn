@@ -17,21 +17,21 @@
 %% author Taras Halturin <halturin@allyst.com>
 
 
--define(LLSN_TYPE_UNDEFINED, 0). 
--define(LLSN_TYPE_NUMBER, 1).
--define(LLSN_TYPE_FLOAT, 2).
--define(LLSN_TYPE_STRING, 3).
--define(LLSN_TYPE_BLOB, 4).
--define(LLSN_TYPE_FILE, 5).
--define(LLSN_TYPE_DATE, 6).
--define(LLSN_TYPE_BOOL, 7).
--define(LLSN_TYPE_STRUCT, 8).
--define(LLSN_TYPE_ARRAY, 9).
+-define(LLSN_TYPE_UNDEFINED,    0). 
+-define(LLSN_TYPE_NUMBER,       1).
+-define(LLSN_TYPE_FLOAT,        2).
+-define(LLSN_TYPE_STRING,       3).
+-define(LLSN_TYPE_BLOB,         4).
+-define(LLSN_TYPE_FILE,         5).
+-define(LLSN_TYPE_DATE,         6).
+-define(LLSN_TYPE_BOOL,         7).
+-define(LLSN_TYPE_STRUCT,       8).
+-define(LLSN_TYPE_ARRAY,        9).
 
 
--define(LLSN_TYPE_ARRAYN, 10).
--define(LLSN_TYPE_POINTER, 11).
--define(LLSN_TYPE_UNUMBER, 12).
+-define(LLSN_TYPE_ARRAYN,      10).
+-define(LLSN_TYPE_POINTER,     11).
+-define(LLSN_TYPE_UNUMBER,     12).
 
 -define(LLSN_TYPE_UNDEFINED_NULL,    255).
 -define(LLSN_TYPE_NUMBER_NULL,       254).
