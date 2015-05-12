@@ -47,6 +47,8 @@
 -define(LLSN_TYPE_POINTER_NULL,      244).
 -define(LLSN_TYPE_UNUMBER_NULL,      243).
 
+-define(LLSN_NULL_TYPES, 128).
+
 
 -define(LLSN_NULL, null).
 -define(LLSN_DEFAULT_THRESHOLD,        0).

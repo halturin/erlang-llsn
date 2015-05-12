@@ -351,7 +351,7 @@ decode(Data) ->
     {unsupported, Data}.
 
 
-% stack is done. tail processing
+% stack processing is done. tail processing
 decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
     case Opts#dopts.tail of
         [] ->
@@ -405,55 +405,62 @@ decode_ext(Value, Data, N, Opts) ->
 
         % decode value
         {false, Data1, Opts1} ->
+            T = Opts1#dopts.tt,
+            if T#typestree.type == ?LLSN_TYPE_UNDEFINED ->
+                case readbin(Data1, 1) of 
+                    parted ->
+                        Type = parted;
+                    {<<Type:8/big-unsigned-integer>>,Data2} ->
+                        pass
+                end,
 
-        TT = Opts1#dopts.tt,
-        if TT#typestree.type == ?LLSN_TYPE_UNDEFINED ->
-            case readbin(Data1, 1) of 
+                Opts2   = Opts1#dopts{tt = T#typestree{type = Type}};
+            true ->
+                Type    = T#typestree.type,
+                Data2   = Data1,
+                Opts2   = Opts1
+            end,
+
+            case Type of
                 parted ->
-                    Type = parted;
-                {<<Type:8/big-unsigned-integer>>,Data2} ->
-                    pass
-            end;
-        true ->
-            Type    = TT#typestree.type,
-            Data2   = Data1
-        end,
+                    {parted, {Value, Data1, N, Opts1}};
 
-        case Type of
-            parted ->
-                {parted, {Value, Data1, N, Opts1}};
+                ?LLSN_TYPE_NUMBER ->
 
-            ?LLSN_TYPE_NUMBER ->
-                ok;
+                    ok;
 
-            ?LLSN_TYPE_UNUMBER ->
-                ok;
+                ?LLSN_TYPE_UNUMBER ->
+                    ok;
 
-            ?LLSN_TYPE_FLOAT ->
-                ok;
+                ?LLSN_TYPE_FLOAT ->
+                    ok;
 
-            ?LLSN_TYPE_STRING ->
-                ok;
+                ?LLSN_TYPE_STRING ->
+                    ok;
 
-            ?LLSN_TYPE_DATE ->
-                ok;
+                ?LLSN_TYPE_DATE ->
+                    ok;
 
-            ?LLSN_TYPE_BOOL ->
-                ok;
+                ?LLSN_TYPE_BOOL ->
+                    ok;
 
-            ?LLSN_TYPE_BLOB ->
-                ok;
+                ?LLSN_TYPE_BLOB ->
+                    ok;
 
-            ?LLSN_TYPE_FILE ->
-                ok;
-        
-            ?LLSN_TYPE_STRUCT ->
-                ok;
+                ?LLSN_TYPE_FILE ->
+                    ok;
+            
+                ?LLSN_TYPE_STRUCT ->
+                    ok;
 
-            Array when Array == ?LLSN_TYPE_ARRAY;
-                       Array == ?LLSN_TYPE_ARRAYN ->
-                ok
-        end
+                Array when Array == ?LLSN_TYPE_ARRAY;
+                           Array == ?LLSN_TYPE_ARRAYN ->
+                    ok;
+
+                Null when Null > ?LLSN_NULL_TYPES  ->
+                    ok
+
+            end
 
     end.
     
