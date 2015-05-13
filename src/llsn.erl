@@ -459,7 +459,7 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_STRING ->
-                    ?DBG("decode_ext FLOAT~n"),
+                    ?DBG("decode_ext STRING~n"),
                     case decode_STRING(Data2, Opts2) of
                         {parted, _, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -471,16 +471,46 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_DATE ->
-                    Value;
+                    ?DBG("decode_ext DATE~n"),
+                    case decode_DATE(Data2) of
+                        {parted, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {NValue, Data3} ->
+                            decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
+                    end;
 
                 ?LLSN_TYPE_BOOL ->
-                    Value;
+                    ?DBG("decode_ext BOOL~n"),
+                    case decode_BOOL(Data2) of
+                        {parted, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {NValue, Data3} ->
+                            decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
+                    end;
 
                 ?LLSN_TYPE_BLOB ->
-                    Value;
+                    ?DBG("decode_ext BLOB~n"),
+                    case decode_BLOB(Data2, Opts2) of
+                        {parted, _, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {tail, Data3, Opts3} ->
+                            % FIXME. tail processing
+                            decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
+                        {NValue, Data3, Opts3} ->
+                            decode_ext([NValue|Value], Data3, N-1, Opts3#dopts{tt = TT})
+                    end;
 
                 ?LLSN_TYPE_FILE ->
-                    Value;
+                    ?DBG("decode_ext FILE~n"),
+                    case decode_STRING(Data2, Opts2) of
+                        {parted, _, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {tail, Data3, Opts3} ->
+                            % FIXME. tail processing
+                            decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
+                        {NValue, Data3, Opts3} ->
+                            decode_ext([NValue|Value], Data3, N-1, Opts3#dopts{tt = TT})
+                    end;
 
                 ?LLSN_TYPE_STRUCT ->
                     Value;
@@ -505,21 +535,7 @@ decode_ext(Value, Data, N, Opts) ->
 %% =============================================================================
 %% Numbers
 %% =============================================================================
-decode_NUMBER_DEBUG(<<Num:64/big-signed-integer, DataTail/binary>>) ->
-    {Num, DataTail};
-decode_NUMBER_DEBUG(Data) ->
-    {parted, Data}.
 
-% decode number tab:
-% 1111 1111   [.... 8 байт ....]           - 64 битное
-% 1111 1110   [.... 7 байт ....]           - 56 битное
-% 1111 110 .  [1 бит  + .... 6 байт ....]  - 49 битное
-% 1111 10 ..  [2 бита + .... 5 байт ....]  - 42 битное
-% 1111 0 ...  [3 бита + .... 4 байта ....] - 35 битное
-% 1110  ....  [4 бита + .... 3 байта ....] - 28 битное
-% 110.  ....  [5 бит  + .... 2 байта ....] - 21 битное
-% 10..  ....  [6 бит  + .... 1 байт ....]  - 14 битное
-% 0...  ....  [7 бит]                      - 7 битное число
 decode_NUMBER(Data) ->
     % decode signed number
     ?DBG("decode NUMBER ~n"),
