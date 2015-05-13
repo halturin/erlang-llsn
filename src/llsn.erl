@@ -539,13 +539,27 @@ decode_ext(Value, Data, N, Opts) ->
                     ?DBG("decode_ext ARRAY ~n"),
                     T = Opts1#dopts.tt,
                     T1 = typesTree(child, T),
-                    T2 = T1#typestree{next = self};
+                    T2 = T1#typestree{next = self},
+                    case decode_UNUMBER(Data2) of
+                        {parted, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {NN, Data3} ->
+                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], tt = T2},
+                            decode_ext([], Data3, NN, NOpts)
+                    end;
 
                 ?LLSN_TYPE_ARRAYN ->
                     ?DBG("decode_ext ARRAY with NULL ~n"),
                     T = Opts1#dopts.tt,
                     T1 = typesTree(child, T),
-                    T2 = T1#typestree{next = self};
+                    T2 = T1#typestree{next = self},
+                    case decode_UNUMBER(Data2) of
+                        {parted, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {NN, Data3} ->
+                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], tt = T2},
+                            decode_ext([], Data3, NN, NOpts)
+                    end;
 
                 Null when Null > ?LLSN_NULL_TYPES  ->
                     ?DBG("decode_ext NULL~n"),
@@ -563,7 +577,6 @@ decode_ext(Value, Data, N, Opts) ->
 %% =============================================================================
 %% Numbers
 %% =============================================================================
-
 decode_NUMBER(Data) ->
     % decode signed number
     ?DBG("decode NUMBER ~n"),
@@ -606,10 +619,6 @@ decode_NUMBER(_,   Data) -> {parted, Data}.
 %% =============================================================================
 %% Floats
 %% =============================================================================
-% decode_FLOAT(<<Float:64/big-float, Tail/binary>>) -> {Float, Tail};
-% decode_FLOAT(Data)                                -> {parted, Data}.
-
-
 decode_FLOAT(Data) ->
     case decode_UNUMBER(Data) of
         {parted, _} ->
@@ -677,7 +686,7 @@ decode_FILE(Data, Opts) ->
 %% =============================================================================
 %% Dates
 %% =============================================================================
-% 2B: year. (-32767..32768), знак определяет эпоху AC/BC
+% 2B: year. (-32767..32768), sign for AC/BC
 %   :4b month (1..12)
 %   :5b day of month (1..31)
 %   :5b hour (0..23)
@@ -728,25 +737,29 @@ typesTree(new) ->
 
         nullflag = ?LLSN_NULL}.
 
-typesTree(next, Current) when Current#typestree.next == ?LLSN_NULL ->
-    typesTree(next, typesTree(new));
-
 typesTree(next, Current) when Current#typestree.next == self ->
     Current;
 
 typesTree(next, Current) ->
-    Current#typestree{
-        prev     = Current,
-        parent   = Current#typestree.parent,
-        nullflag = Current#typestree.nullflag};
+    if Current#typestree.next == ?LLSN_NULL ->
+        T = typesTree(new);
+    true ->
+        T = Current#typestree.next
+    end,
 
-typesTree(child, Current) when Current#typestree.child == ?LLSN_NULL ->
-    typesTree(child, typesTree(new));
+    T#typestree{
+        prev     = Current,
+        parent   = Current#typestree.parent};
 
 typesTree(child, Current) ->
-    Current#typestree{
-        parent   = Current,
-        nullflag = Current#typestree.nullflag};
+    if Current#typestree.child == ?LLSN_NULL ->
+        T = typesTree(new);
+    true ->
+        T = Current#typestree.child
+    end,
+
+    T#typestree{
+        parent   = Current};
 
 typesTree(parent, Current) when Current#typestree.prev == ? LLSN_NULL ->
     Current#typestree.parent;
