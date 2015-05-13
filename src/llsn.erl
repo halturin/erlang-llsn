@@ -28,15 +28,12 @@
 
 -export([decode_NUMBER/1, decode_UNUMBER/1]).
 
--define(DBG(Format), io:format("~p:~p: " ++ Format, [?MODULE, ?LINE])).
-
-
 % encode options
 -record(options, {
     % threshold for the huge data (string, blob, file). put it to the end of packet
-    threshold :: non_neg_integer(), 
+    threshold :: non_neg_integer(),
     pid, % send frames of the encoded data to the PID
-    framesize, % frame size limit 
+    framesize, % frame size limit
     frame :: non_neg_integer(), % frame number
     binsize, % current size of encoded data
     userdata :: list(), % use it with framing encode data
@@ -139,7 +136,7 @@ encode(Packet, Struct, PID, FrameLimit) when is_pid(PID)
 
 % framing and custom framelimit
 encode(Packet, Struct, PID, FrameLimit, UserData) when is_pid(PID)
-        and is_integer(FrameLimit) and is_tuple(Packet) 
+        and is_integer(FrameLimit) and is_tuple(Packet)
         and is_tuple(Struct) and is_list(UserData)->
     Options = #options{
         threshold = ?LLSN_DEFAULT_THRESHOLD,
@@ -166,7 +163,7 @@ encode_ext(Packet, Struct, #options{threshold = Threshold} = Opts) ->
             framesize    = 2 + LenBinLen, % first 2 bytes for threshold + N bytes for the number of elements
             struct       = Struct
             },
-    
+
 
     encode_struct(P, tuple_to_list(Struct), Bin, Opts).
 
@@ -332,12 +329,13 @@ encode_BOOL(_)    -> {<<0:8/big-unsigned-integer>>, 1}.
                }).
 
 
-% Support version 1 
-decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer, 
+% Support version 1
+decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
                 Data/binary>>) when V == 1 ->
     case decode_UNUMBER(Data) of
         {parted, _} ->
-            {parted, {Data}};
+            {malformed, Data};
+
         {N, Data1} ->
             Opts = #dopts{threshold = Threshold,
                     stack     = [],
@@ -347,8 +345,13 @@ decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
     end;
 
 % unsupported version of LLSN
+decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
+                Data/binary>>) when V > 1 ->
+    {unsupported, Data};
+
+
 decode(Data) ->
-    {unsupported, Data}.
+    {malformed, Data}.
 
 
 % stack processing is done. tail processing
@@ -357,7 +360,6 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
         [] ->
             % done
             list_to_tuple(lists:reverse(Value));
-            
 
         [{flat,TailH} | TailT] ->
             ?DBG("Tail handling"),
@@ -377,7 +379,7 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
 decode_ext(Value, Data, 0, Opts) ->
     ?DBG("########### Pop from Stack"),
     [{StackValue, StackN} | StackT] = Opts#dopts.stack,
-    
+
     TT      = typesTree(parent, Opts#dopts.tt),
     NValue  = case TT#typestree.type of
                  TType when  TType == ?LLSN_TYPE_STRUCT ->
@@ -389,17 +391,17 @@ decode_ext(Value, Data, 0, Opts) ->
     NOpts   = Opts#dopts{stack = StackT, tt = TT},
 
     decode_ext(NValue, Data, StackN, NOpts);
-    
+
 
 decode_ext(Value, Data, N, Opts) ->
-    ?DBG("decode_ext"),
+    ?DBG("decode_ext ~n"),
 
     case decode_skipnull(Data, N, Opts) of
         % null value. skip it.
         {true, Data1, Opts1} ->
             decode_ext([?LLSN_NULL|Value], Data1, N-1, Opts1);
 
-        % Not enough data to decode packet. 
+        % Not enough data to decode packet.
         parted ->
             {parted, {Value, Data, N, Opts}};
 
@@ -407,10 +409,11 @@ decode_ext(Value, Data, N, Opts) ->
         {false, Data1, Opts1} ->
             T = Opts1#dopts.tt,
             if T#typestree.type == ?LLSN_TYPE_UNDEFINED ->
-                case readbin(Data1, 1) of 
-                    parted ->
+                case readbin(Data1, 1) of
+                    {parted, Data2} ->
                         Type = parted;
-                    {<<Type:8/big-unsigned-integer>>,Data2} ->
+                    {B, Data2} ->
+                        <<Type:8/big-unsigned-integer>> = B,
                         pass
                 end,
 
@@ -421,13 +424,19 @@ decode_ext(Value, Data, N, Opts) ->
                 Opts2   = Opts1
             end,
 
+            TT = typesTree(next, Opts2#dopts.tt),
+
             case Type of
                 parted ->
                     {parted, {Value, Data1, N, Opts1}};
 
                 ?LLSN_TYPE_NUMBER ->
-
-                    ok;
+                    case decode_NUMBER(Data2) of
+                        {parted, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {NValue, Data3} ->
+                            decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
+                    end;
 
                 ?LLSN_TYPE_UNUMBER ->
                     ok;
@@ -449,7 +458,7 @@ decode_ext(Value, Data, N, Opts) ->
 
                 ?LLSN_TYPE_FILE ->
                     ok;
-            
+
                 ?LLSN_TYPE_STRUCT ->
                     ok;
 
@@ -458,12 +467,14 @@ decode_ext(Value, Data, N, Opts) ->
                     ok;
 
                 Null when Null > ?LLSN_NULL_TYPES  ->
-                    ok
+                    decode_ext([?LLSN_NULL|Value], Data1, N-1, Opts1)
 
             end
 
+
+
     end.
-    
+
 
 %% =============================================================================
 %% Numbers
@@ -485,10 +496,12 @@ decode_NUMBER_DEBUG(Data) ->
 % 0...  ....  [7 бит]                      - 7 битное число
 decode_NUMBER(Data) ->
     % decode signed number
+    ?DBG("decode NUMBER ~n"),
     decode_NUMBER(signed, Data).
 
 decode_UNUMBER(Data) ->
     % decode unsigned number
+    ?DBG("decode UNUMBER ~n"),
     decode_NUMBER(unsigned, Data).
 
 decode_NUMBER(unsigned, <<2#0:1/big-unsigned-integer,        Num:7/big-unsigned-integer,  Tail/binary>>) -> {Num, Tail};
@@ -615,7 +628,7 @@ decode_DATE(<<Year:16/big-signed-integer,
                 MSec:10/big-unsigned-integer,
                 OffsetHour:6/big-integer,
                 OffsetMin:6/big-unsigned-integer, DataTail/binary>>) ->
-    {{{Year, Month, Day}, {Hour, Min, Sec, MSec}, {OffsetHour, OffsetMin}}, 
+    {{{Year, Month, Day}, {Hour, Min, Sec, MSec}, {OffsetHour, OffsetMin}},
      DataTail};
 decode_DATE(Data) ->
     {parted, Data}.
@@ -637,12 +650,12 @@ typesTree(new) ->
     #typestree{
         type     = ?LLSN_TYPE_UNDEFINED,
         length   = ?LLSN_NULL,
-        
+
         child    = ?LLSN_NULL,
         parent   = ?LLSN_NULL,
         prev     = ?LLSN_NULL,
         next     = ?LLSN_NULL,
-        
+
         nullflag = ?LLSN_NULL}.
 
 typesTree(next, Current) ->
@@ -684,30 +697,29 @@ typesTree(parent, Current) ->
 
 typesTree(Mode, Current, Type) ->
     typesTree(Mode, Current#typestree{type = Type}).
- 
+
 typesTree(Mode, Current, Type, Len) ->
     typesTree(Mode, Current#typestree{type = Type, length = Len}).
 
+
+readbin(Data, Len) when length(Data) < Len ->
+        {parted, Data};
 readbin(Data, Len) ->
-    if length(Data) < Len ->
-        parted;
-    true ->
-        <<Bin:Len/binary-unit:8, Tail>> = Data,
-        {Bin, Tail}
-    end.
+        <<Bin:Len/binary-unit:8, Tail/binary>> = Data,
+        {Bin, Tail}.
 
 % checking for null flags
 decode_skipnull(<<>>, N, Opts) ->
     parted;
 
-decode_skipnull(Data, N, Opts) 
+decode_skipnull(Data, N, Opts)
     when Opts#dopts.tt#typestree.nullflag == ?LLSN_NULL ->
-    false;
+    {false, Data, Opts};
 
 decode_skipnull(Data, N, Opts)
     when Opts#dopts.tt#typestree.nullflag /= ?LLSN_NULL ->
-    
-    ?DBG("decode_ext with NULL flag"),
+
+    ?DBG("decode_ext with NULL flag ~n"),
 
     T   = Opts#dopts.tt,
     Pos = (8 - ((T#typestree.length  - N) rem 8)),
@@ -724,7 +736,7 @@ decode_skipnull(Data, N, Opts)
     end,
 
     if TT#typestree.nullflag band (1 bsl (Pos - 1)) == 0 ->
-        false;
+        {false, Data1, Opts1};
     true ->
-        true
+        {true, Data1, Opts1}
     end.

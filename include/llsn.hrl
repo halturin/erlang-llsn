@@ -17,7 +17,7 @@
 %% author Taras Halturin <halturin@allyst.com>
 
 
--define(LLSN_TYPE_UNDEFINED,    0). 
+-define(LLSN_TYPE_UNDEFINED,    0).
 -define(LLSN_TYPE_NUMBER,       1).
 -define(LLSN_TYPE_FLOAT,        2).
 -define(LLSN_TYPE_STRING,       3).
@@ -61,34 +61,39 @@
     year    :: integer(),
     month   :: non_neg_integer(),
     day     :: non_neg_integer()
-    }
-).
+    }).
 
 -record(llsn_date_t, {
-    hour    :: non_neg_integer(), 
+    hour    :: non_neg_integer(),
     min     :: non_neg_integer(),
     sec     :: non_neg_integer(),
     msec    :: non_neg_integer() %% up to 999
-    }
-).
+    }).
 
 -record(llsn_date_tz, {
-    hour    :: integer(), 
+    hour    :: integer(),
     min     :: non_neg_integer()
-    }
-).
+    }).
 
 -record (llsn_date, {
     date,
     time,
     zone
-    }
-).
+    }).
 
 -record(llsn_file, {
     name    :: string(),
     tmpname :: string(),    %% temporary filename. using on decode files.
     f                       %% file descriptor file:open(...)
-    }
-).
-           
+    }).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% for development purposes only
+%%
+-define(DBG(Format),                lager:log(debug, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE])).
+-define(DBG(Format, Data),          lager:log(debug, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE | Data])).
+
+-define(LOG(Format),                lager:log(info, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE])).
+-define(LOG(Format, Data),          lager:log(info, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE | Data])).
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

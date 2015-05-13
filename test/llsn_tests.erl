@@ -26,21 +26,21 @@
 
 llsn_encode_signed_numbers_test() ->
     [
-        fun() ->   
+        fun() ->
             {BinNum, _} = llsn:encode_NUMBER(N),
             {DecNum, _} = llsn:decode_NUMBER(BinNum),
             ?assert(N =:= DecNum)
-        end 
+        end
         || N <- get_signed_numbers()
     ].
 
 llsn_encode_unsigned_numbers_test() ->
     [
-        fun() ->   
+        fun() ->
             {BinNum, _} = llsn:encode_UNUMBER(N),
             {DecNum, _} = llsn:decode_UNUMBER(BinNum),
             ?assert(N =:= DecNum)
-        end 
+        end
         || N <- get_unsigned_numbers()
     ].
 
@@ -90,7 +90,7 @@ llsn_decodeComplexStruct_test() ->
     Value = llsn:decode(ValueBin),
     MainValue = get_exampleMainValue(),
     ?assert(Value =:= MainValue).
-    
+
 llsn_decodeComplexStruct_with_Framing_test() ->
     ok.
 
@@ -107,7 +107,7 @@ get_exampleMainValue() ->
     [true, false, true],                %% Field4
     3.141596,                           %% Field5
     "Hello World. 你好世界. مرحبا بالعالم. こんにちは世界. Γειά Σου Κόσμε. העלא וועלט. Привет Мир.",
-    {{2015, 4, 15},{16, 56, 39, 678},{3,0}},            %% Field7 = 4 Apr, 2015 16:56:39.678 +0300    
+    {{2015, 4, 15},{16, 56, 39, 678},{3,0}},            %% Field7 = 4 Apr, 2015 16:56:39.678 +0300
     null,                                               %% Field8
     {0, null},                                          %% Field9
     [{0, null}, {0, null}, {0, null}, {0, null}, {0, null}], %% Field10
@@ -121,7 +121,7 @@ get_exampleMainValue() ->
     get_unsigned_numbers(),                             %% Field18
     [null, [888, 888, 888], null, [null, null, null, 888], null]
     }.
-    
+
 get_exampleMainDeclaration() ->
     {
         ?LLSN_TYPE_NUMBER,
@@ -145,7 +145,7 @@ get_exampleMainDeclaration() ->
     }.
 
 %%check for correct number encoding.
-get_signed_numbers() -> 
+get_signed_numbers() ->
     [
     -64, -63, 63, 64, % 2,1,1,2 bytes
     -8192, -8191, 8191, 8192, % 3,2,2,3 bytes
@@ -156,9 +156,9 @@ get_signed_numbers() ->
     -281474976710656, -281474976710655, 281474976710655, 281474976710656, % 8,7,7,8
     -36028797018963968, -36028797018963967, 36028797018963967, 36028797018963968, % 9,8,8,9
     -9223372036854775807, 9223372036854775807 % 9,9
-    ]. 
+    ].
 
-get_unsigned_numbers() -> 
+get_unsigned_numbers() ->
     [
     127, 128, % 1,2 bytes
     16383, 16384, % 2,3
@@ -169,7 +169,7 @@ get_unsigned_numbers() ->
     562949953421311, 562949953421312, % 7,8
     72057594037927935, 72057594037927936, % 8,9
     18446744073709551615 % 9 (<<255,255,255,255,255,255,255,255,255>>)
-    ]. 
+    ].
 
 gen_random_signed_number() ->
     NL = 1 bsl crypto:rand_uniform(0,4), % 1byte, 2, 4, 8 num len
