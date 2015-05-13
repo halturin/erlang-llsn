@@ -409,6 +409,7 @@ decode_ext(Value, Data, N, Opts) ->
         {false, Data1, Opts1} ->
             T = Opts1#dopts.tt,
             if T#typestree.type == ?LLSN_TYPE_UNDEFINED ->
+                ?DBG("decode_ext READ Type: ~p ~n", [Data1]),
                 case readbin(Data1, 1) of
                     {parted, Data2} ->
                         Type = parted;
@@ -431,6 +432,7 @@ decode_ext(Value, Data, N, Opts) ->
                     {parted, {Value, Data1, N, Opts1}};
 
                 ?LLSN_TYPE_NUMBER ->
+                    ?DBG("decode_ext NUMBER~n"),
                     case decode_NUMBER(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -439,35 +441,59 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_UNUMBER ->
-                    ok;
+                    ?DBG("decode_ext UNUMBER~n"),
+                    case decode_UNUMBER(Data2) of
+                        {parted, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {NValue, Data3} ->
+                            decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
+                    end;
 
                 ?LLSN_TYPE_FLOAT ->
-                    ok;
+                    ?DBG("decode_ext FLOAT~n"),
+                    case decode_FLOAT(Data2) of
+                        {parted, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {NValue, Data3} ->
+                            decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
+                    end;
 
                 ?LLSN_TYPE_STRING ->
-                    ok;
+                    ?DBG("decode_ext FLOAT~n"),
+                    case decode_STRING(Data2, Opts2) of
+                        {parted, _, _} ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        {tail, Data3, Opts3} ->
+                            % FIXME. tail processing
+                            decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
+                        {NValue, Data3, Opts3} ->
+                            decode_ext([NValue|Value], Data3, N-1, Opts3#dopts{tt = TT})
+                    end;
 
                 ?LLSN_TYPE_DATE ->
-                    ok;
+                    Value;
 
                 ?LLSN_TYPE_BOOL ->
-                    ok;
+                    Value;
 
                 ?LLSN_TYPE_BLOB ->
-                    ok;
+                    Value;
 
                 ?LLSN_TYPE_FILE ->
-                    ok;
+                    Value;
 
                 ?LLSN_TYPE_STRUCT ->
-                    ok;
+                    Value;
 
                 Array when Array == ?LLSN_TYPE_ARRAY;
                            Array == ?LLSN_TYPE_ARRAYN ->
-                    ok;
+                    Value;
 
                 Null when Null > ?LLSN_NULL_TYPES  ->
-                    decode_ext([?LLSN_NULL|Value], Data1, N-1, Opts1)
+                    ?DBG("decode_ext NULL~n"),
+                    T = Opts1#dopts.tt,
+                    TT1 = typesTree(next, T#typestree{type = ?LLSN_TYPE_UNDEFINED_NULL - Null}),
+                    decode_ext([?LLSN_NULL|Value], Data2, N-1, Opts1#dopts{tt = TT1})
 
             end
 
