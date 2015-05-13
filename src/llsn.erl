@@ -502,7 +502,7 @@ decode_ext(Value, Data, N, Opts) ->
 
                 ?LLSN_TYPE_FILE ->
                     ?DBG("decode_ext FILE~n"),
-                    case decode_STRING(Data2, Opts2) of
+                    case decode_FILE(Data2, Opts2) of
                         {parted, _, _} ->
                             {parted, {Value, Data2, N, Opts2}};
                         {tail, Data3, Opts3} ->
@@ -513,15 +513,43 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_STRUCT ->
-                    Value;
+                    ?DBG("decode_ext STRUCT ~n"),
+                    if Opts2#dopts.tt#typestree.length == ?LLSN_NULL ->
+                        case decode_UNUMBER(Data2) of
+                            {parted, Data3} ->
+                                L = parted;
+                            {L, Data3} ->
+                                pass
+                        end;
+                    true ->
+                        L = Opts2#dopts.tt#typestree.length,
+                        Data3 = Data2
+                    end,
 
-                Array when Array == ?LLSN_TYPE_ARRAY;
-                           Array == ?LLSN_TYPE_ARRAYN ->
-                    Value;
+                    case L of
+                        parted ->
+                            {parted, {Value, Data2, N, Opts2}};
+                        _ ->
+                            T = typesTree(child, Opts2#dopts.tt, L),
+                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], tt = T},
+                            decode_ext([], Data3, L, NOpts)
+                    end;
+
+                ?LLSN_TYPE_ARRAY ->
+                    ?DBG("decode_ext ARRAY ~n"),
+                    T = Opts1#dopts.tt,
+                    T1 = typesTree(child, T),
+                    T2 = T1#typestree{next = self};
+
+                ?LLSN_TYPE_ARRAYN ->
+                    ?DBG("decode_ext ARRAY with NULL ~n"),
+                    T = Opts1#dopts.tt,
+                    T1 = typesTree(child, T),
+                    T2 = T1#typestree{next = self};
 
                 Null when Null > ?LLSN_NULL_TYPES  ->
                     ?DBG("decode_ext NULL~n"),
-                    T = Opts1#dopts.tt,
+                    T   = Opts1#dopts.tt,
                     TT1 = typesTree(next, T#typestree{type = ?LLSN_TYPE_UNDEFINED_NULL - Null}),
                     decode_ext([?LLSN_NULL|Value], Data2, N-1, Opts1#dopts{tt = TT1})
 
@@ -700,42 +728,33 @@ typesTree(new) ->
 
         nullflag = ?LLSN_NULL}.
 
+typesTree(next, Current) when Current#typestree.next == ?LLSN_NULL ->
+    typesTree(next, typesTree(new));
+
+typesTree(next, Current) when Current#typestree.next == self ->
+    Current;
+
 typesTree(next, Current) ->
-    case Current#typestree.next of
-        ?LLSN_NULL ->
-            TT = typesTree(new),
-            TT#typestree{
-                prev     = Current,
-                parent   = Current#typestree.parent,
-                nullflag = Current#typestree.nullflag};
-        TT ->
-            TT#typestree{
-                prev     = Current,
-                parent   = Current#typestree.parent,
-                nullflag = Current#typestree.nullflag}
-    end;
+    Current#typestree{
+        prev     = Current,
+        parent   = Current#typestree.parent,
+        nullflag = Current#typestree.nullflag};
+
+typesTree(child, Current) when Current#typestree.child == ?LLSN_NULL ->
+    typesTree(child, typesTree(new));
 
 typesTree(child, Current) ->
-    case Current#typestree.child of
-        ?LLSN_NULL ->
-            TT = typesTree(new),
-            TT#typestree{
-                parent   = Current,
-                nullflag = Current#typestree.nullflag};
-        TT ->
-            TT#typestree{
-                parent   = Current,
-                nullflag = Current#typestree.nullflag}
-    end;
+    Current#typestree{
+        parent   = Current,
+        nullflag = Current#typestree.nullflag};
+
+typesTree(parent, Current) when Current#typestree.prev == ? LLSN_NULL ->
+    Current#typestree.parent;
 
 typesTree(parent, Current) ->
-    case Current#typestree.prev of
-        ?LLSN_NULL ->
-            Current#typestree.parent;
-        Prev->
-            typesTree(start, Prev#typestree{next = Current,
-                    parent = Current#typestree.parent})
-    end.
+    Prev = Current#typestree.prev,
+    typesTree(parent, Prev#typestree{next = Current,
+            parent = Current#typestree.parent}).
 
 typesTree(Mode, Current, Type) ->
     typesTree(Mode, Current#typestree{type = Type}).
