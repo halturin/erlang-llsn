@@ -45,12 +45,14 @@
 
 -record(typestree, {
     type        :: non_neg_integer(),
-    length      :: non_neg_integer(),
-    parent,
-    child,
-    prev,
+
     next,
-    nullflag
+    prev,
+    child,
+    parent,
+
+    length      :: non_neg_integer()
+    % nullflag
 }).
 
 
@@ -325,7 +327,8 @@ encode_BOOL(_)    -> {<<0:8/big-unsigned-integer>>, 1}.
 -record(dopts, {threshold :: non_neg_integer(),
                 tail,
                 stack,
-                tt % typestree
+                tt, % typestree
+                nullflag
                }).
 
 
@@ -377,25 +380,30 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
 
 % stack processing
 decode_ext(Value, Data, 0, Opts) ->
-    ?DBG("########### Pop from Stack"),
+    ?DBG("Pop from Stack ~n"),
     [{StackValue, StackN} | StackT] = Opts#dopts.stack,
 
-    TT      = typesTree(parent, Opts#dopts.tt),
-    ?DBG("########### ~w ~n", TT),
-    NValue  = case TT#typestree.type of
-                 TType when  TType == ?LLSN_TYPE_STRUCT ->
-                     [list_to_tuple(lists:reverse(Value)) | StackValue];
-                 _ ->
-                     [lists:reverse(Value) | StackValue]
-              end,
+    TT      =   typesTree(parent, Opts#dopts.tt),
 
-    NOpts   = Opts#dopts{stack = StackT, tt = typesTree(next, TT)},
+    NValue  =   case TT#typestree.type of
+                    ?LLSN_TYPE_STRUCT ->
+                        Flag = 0,
+                        [list_to_tuple(lists:reverse(Value)) | StackValue];
+                    _ ->
+                        Flag = Opts#dopts.nullflag,
+                        [lists:reverse(Value) | StackValue]
+                end,
+
+    NOpts   =   Opts#dopts{stack = StackT,
+                           tt    = typesTree(next, TT),
+                           nullflag = Flag},
 
     decode_ext(NValue, Data, StackN, NOpts);
 
 
 decode_ext(Value, Data, N, Opts) ->
-    ?DBG("decode_ext ~n"),
+    ?DBG("decode_ext ~p ~n", [Value]),
+    ?DBG("########### ~p ~n~n", [Opts#dopts.tt]),
 
     case decode_skipnull(Data, N, Opts) of
         % null value. skip it.
@@ -409,8 +417,9 @@ decode_ext(Value, Data, N, Opts) ->
         % decode value
         {false, Data1, Opts1} ->
             T = Opts1#dopts.tt,
+            ?DBG("decode_ext BUFFER: ~w ~n", [Data1]),
             if T#typestree.type == ?LLSN_TYPE_UNDEFINED ->
-                ?DBG("decode_ext READ Type: ~w ~n", [Data1]),
+                ?DBG("decode_ext READ Type"),
                 case readbin(Data1, 1) of
                     {parted, Data2} ->
                         Type = parted;
@@ -519,41 +528,43 @@ decode_ext(Value, Data, N, Opts) ->
                         parted ->
                             {parted, {Value, Data2, N, Opts2}};
 
-                        {Data3, Opts3} ->
-                            decode_ext([], Data3, N, Opts3)
+                        {Data3, NN, Opts3} ->
+                            decode_ext([], Data3, NN, Opts3)
                     end;
 
                 ?LLSN_TYPE_ARRAY ->
                     ?DBG("decode_ext ARRAY ~n"),
-                    T = Opts1#dopts.tt,
-                    T1 = typesTree(child, T),
-                    T2 = T1#typestree{next = self},
                     case decode_UNUMBER(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
                         {NN, Data3} ->
+                            T0 = Opts1#dopts.tt#typestree{length = NN},
+                            T1 = typesTree(child, T0),
+                            T2 = T1#typestree{next = self},
                             NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], tt = T2},
                             decode_ext([], Data3, NN, NOpts)
                     end;
 
                 ?LLSN_TYPE_ARRAYN ->
                     ?DBG("decode_ext ARRAY with NULL ~n"),
-                    T = Opts1#dopts.tt,
-                    T1 = typesTree(child, T),
-                    T2 = T1#typestree{next = self},
                     case decode_UNUMBER(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
                         {NN, Data3} ->
-                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], tt = T2},
+                            T0 = Opts1#dopts.tt#typestree{length = NN},
+                            T1 = typesTree(child, T0),
+                            T2 = T1#typestree{next = self},
+                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], 
+                                                tt = T2,
+                                                nullflag = 0},
                             decode_ext([], Data3, NN, NOpts)
                     end;
 
                 Null when Null > ?LLSN_NULL_TYPES  ->
                     ?DBG("decode_ext NULL~n"),
-                    T   = Opts1#dopts.tt,
-                    TT1 = typesTree(next, T#typestree{type = ?LLSN_TYPE_UNDEFINED_NULL - Null}),
-                    decode_ext([?LLSN_NULL|Value], Data2, N-1, Opts1#dopts{tt = TT1})
+                    T0   = Opts1#dopts.tt,
+                    T1 = typesTree(next, T0#typestree{type = ?LLSN_TYPE_UNDEFINED_NULL - Null}),
+                    decode_ext([?LLSN_NULL|Value], Data2, N-1, Opts1#dopts{tt = T1})
 
             end
 
@@ -720,14 +731,14 @@ decode_STRUCT(Value, N, Data, Opts) when Opts#dopts.tt#typestree.length == ?LLSN
             T = Opts#dopts.tt,
             T1 = T#typestree{length = Len},
             Opts1 = Opts#dopts{tt = T1},
-            decode_STRUCT(Value, N, Data1, Opts1)
+            decode_STRUCT(Value, Len, Data1, Opts1)
     end;
 
 decode_STRUCT(Value, N, Data, Opts) ->
     T1 = typesTree(child, Opts#dopts.tt),
     NOpts = Opts#dopts{stack = [{Value, N-1} | Opts#dopts.stack],
                        tt    = T1},
-    {Data, NOpts}.
+    {Data, Opts#dopts.tt#typestree.length, NOpts}.
 
 %% =============================================================================
 %% Helpers
@@ -743,47 +754,40 @@ typesTree(new) ->
         child    = ?LLSN_NULL,
         parent   = ?LLSN_NULL,
 
-        nullflag = ?LLSN_NULL,
-        length   = ?LLSN_NULL}.
+        % nullflag = ?LLSN_NULL,
+        length   = ?LLSN_NULL }. % set it true when struct is decoded (all field types is knowing)
 
 typesTree(next, Current) when Current#typestree.next == self ->
     Current;
 
-typesTree(next, Current) ->
-    if Current#typestree.next == ?LLSN_NULL ->
-        T = typesTree(new);
-    true ->
-        T = Current#typestree.next
-    end,
+typesTree(next, Current) when Current#typestree.next == ?LLSN_NULL->
+    T = typesTree(new),
+    T#typestree{prev     = Current,
+                parent   = Current#typestree.parent};
 
-    T#typestree{
-        prev     = Current,
-        parent   = Current#typestree.parent};
+typesTree(next, Current) ->
+    T = Current#typestree.next,
+    NextPrev = Current#typestree{next = ?LLSN_NULL, parent = ?LLSN_NULL},
+    T#typestree{prev     = NextPrev,
+                parent   = Current#typestree.parent};
+
+typesTree(child, Current) when Current#typestree.child == ?LLSN_NULL ->
+    T = typesTree(new),
+    T#typestree{parent = Current#typestree{child = ?LLSN_NULL}};
 
 typesTree(child, Current) ->
-    if Current#typestree.child == ?LLSN_NULL ->
-        T = typesTree(new);
-    true ->
-        T = Current#typestree.child
-    end,
-
-    T#typestree{
-        parent   = Current};
+    T = Current#typestree.child,
+    T#typestree{parent = Current#typestree{child = ?LLSN_NULL}};
 
 typesTree(parent, Current) when Current#typestree.prev == ? LLSN_NULL ->
-    Current#typestree.parent;
+    T = Current#typestree.parent,
+    T#typestree{child = Current#typestree{parent = ?LLSN_NULL}};
 
 typesTree(parent, Current) ->
-    Prev = Current#typestree.prev,
-    typesTree(parent, Prev#typestree{next = Current,
-            parent = Current#typestree.parent}).
-
-typesTree(Mode, Current, Type) ->
-    typesTree(Mode, Current#typestree{type = Type}).
-
-typesTree(Mode, Current, Type, Len) ->
-    typesTree(Mode, Current#typestree{type = Type, length = Len}).
-
+    T = Current#typestree.prev,
+    ParentNext = Current#typestree{prev = ?LLSN_NULL, parent = ?LLSN_NULL},
+    typesTree(parent, T#typestree{next   = ParentNext,
+                                  parent = Current#typestree.parent}).
 
 readbin(Data, Len) when length(Data) < Len ->
         {parted, Data};
@@ -795,31 +799,31 @@ readbin(Data, Len) ->
 decode_skipnull(<<>>, N, Opts) ->
     parted;
 
-decode_skipnull(Data, N, Opts)
-    when Opts#dopts.tt#typestree.nullflag == ?LLSN_NULL ->
+decode_skipnull(Data, N, Opts) when Opts#dopts.tt#typestree.parent == ?LLSN_NULL ->
     {false, Data, Opts};
 
-decode_skipnull(Data, N, Opts)
-    when Opts#dopts.tt#typestree.nullflag /= ?LLSN_NULL ->
-
-    ?DBG("decode_ext with NULL flag ~n"),
-
+decode_skipnull(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
     T   = Opts#dopts.tt,
-    Pos = (8 - ((T#typestree.length  - N) rem 8)),
+    Parent = T#typestree.parent,
+    Pos = (8 - (((Parent#typestree.length-1) - N) rem 8)),
 
     if Pos == 8 ->
+        ?DBG("decode_skipnull:     read NULL flag byte. "),
         <<NF:8/big-unsigned-integer, Data1/binary>>  = Data,
-        TT      = T#typestree{nullflag = NF},
-        Opts1   = Opts#dopts{tt = TT};
+        Opts1   = Opts#dopts{nullflag = NF};
 
     true ->
         Data1   = Data,
-        TT      = T,
         Opts1   = Opts
     end,
 
-    if TT#typestree.nullflag band (1 bsl (Pos - 1)) == 0 ->
+    if Opts1#dopts.nullflag band (1 bsl (Pos - 1)) == 0 ->
+        ?DBG("decode_skipnull:     not skip ~n"),
         {false, Data1, Opts1};
     true ->
+        ?DBG("decode_skipnull:     NULL value. SKIP IT ~n"),
         {true, Data1, Opts1}
-    end.
+    end;
+
+decode_skipnull(Data, N, Opts) ->
+    {false, Data, Opts}.
