@@ -402,8 +402,8 @@ decode_ext(Value, Data, 0, Opts) ->
 
 
 decode_ext(Value, Data, N, Opts) ->
-    ?DBG("decode_ext ~p ~n", [Value]),
-    ?DBG("########### ~p ~n~n", [Opts#dopts.tt]),
+    ?DBG("~n~n~n decode_ext ~p ~n", [Value]),
+    ?DBG("########### ~p", [Opts#dopts.tt]),
 
     case decode_skipnull(Data, N, Opts) of
         % null value. skip it.
