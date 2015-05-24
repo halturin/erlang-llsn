@@ -363,15 +363,20 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
         [] ->
             % done
             list_to_tuple(lists:reverse(Value));
+        [{string,TailH} | TailT] ->
+            ?DBG("Tail handling: STRING"),
+            NOpts = Opts#dopts{tail = TailT},
+            decode_ext(Value, Data, 0, NOpts);
+
 
         [{flat,TailH} | TailT] ->
-            ?DBG("Tail handling"),
+            ?DBG("Tail handling: BLOB"),
             NOpts = Opts#dopts{tail = TailT},
             decode_ext(Value, Data, 0, NOpts);
 
         [{file, _File} | TailT] ->
             %  доделать нормальную обработку файла
-            ?DBG("FIXME. Tail handling. Process file"),
+            ?DBG("Tail handling: FILE"),
             FTMP = <<"fffiiillleee">>,
             NOpts = Opts#dopts{tail = TailT},
             decode_ext(Value, Data, 0, NOpts)
@@ -402,13 +407,14 @@ decode_ext(Value, Data, 0, Opts) ->
 
 
 decode_ext(Value, Data, N, Opts) ->
-    ?DBG("~n~n~n decode_ext ~p ~n", [Value]),
-    ?DBG("########### ~p", [Opts#dopts.tt]),
+    ?DBG("~n~n~n ########### [N:~p] ~p", [N, Opts]),
 
-    case decode_skipnull(Data, N, Opts) of
+    case decode_nullflag(Data, N, Opts) of
         % null value. skip it.
         {true, Data1, Opts1} ->
-            decode_ext([?LLSN_NULL|Value], Data1, N-1, Opts1);
+            T1 = Opts1#dopts.tt,
+            Opts2   = Opts1#dopts{tt = typesTree(next, T1)},
+            decode_ext([?LLSN_NULL|Value], Data1, N-1, Opts2);
 
         % Not enough data to decode packet.
         parted ->
@@ -541,7 +547,9 @@ decode_ext(Value, Data, N, Opts) ->
                             T0 = Opts1#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
                             T2 = T1#typestree{next = self},
-                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], tt = T2},
+                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], 
+                                                tt    = T2,
+                                                nullflag = ?LLSN_NULL},
                             decode_ext([], Data3, NN, NOpts)
                     end;
 
@@ -730,7 +738,7 @@ decode_STRUCT(Value, N, Data, Opts) when Opts#dopts.tt#typestree.length == ?LLSN
         {Len, Data1} ->
             T = Opts#dopts.tt,
             T1 = T#typestree{length = Len},
-            Opts1 = Opts#dopts{tt = T1},
+            Opts1 = Opts#dopts{tt = T1, nullflag = ?LLSN_NULL},
             decode_STRUCT(Value, Len, Data1, Opts1)
     end;
 
@@ -796,19 +804,19 @@ readbin(Data, Len) ->
         {Bin, Tail}.
 
 % checking for null flags
-decode_skipnull(<<>>, N, Opts) ->
+decode_nullflag(<<>>, N, Opts) ->
     parted;
 
-decode_skipnull(Data, N, Opts) when Opts#dopts.tt#typestree.parent == ?LLSN_NULL ->
+decode_nullflag(Data, N, Opts) when Opts#dopts.tt#typestree.parent == ?LLSN_NULL ->
     {false, Data, Opts};
 
-decode_skipnull(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
+decode_nullflag(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
     T   = Opts#dopts.tt,
     Parent = T#typestree.parent,
-    Pos = (8 - (((Parent#typestree.length-1) - N) rem 8)),
-
+    Pos = (8 - ((Parent#typestree.length - N) rem 8)),
+    ?DBG("decode_nullflag:    Pos:[~p] N:[~p] len:[~p] ",[Pos, N, Parent#typestree.length]),
     if Pos == 8 ->
-        ?DBG("decode_skipnull:     read NULL flag byte. "),
+        ?DBG("decode_nullflag:     read NULL flag byte. "),
         <<NF:8/big-unsigned-integer, Data1/binary>>  = Data,
         Opts1   = Opts#dopts{nullflag = NF};
 
@@ -818,12 +826,12 @@ decode_skipnull(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
     end,
 
     if Opts1#dopts.nullflag band (1 bsl (Pos - 1)) == 0 ->
-        ?DBG("decode_skipnull:     not skip ~n"),
+        ?DBG("decode_nullflag:     not skip ~n"),
         {false, Data1, Opts1};
     true ->
-        ?DBG("decode_skipnull:     NULL value. SKIP IT ~n"),
+        ?DBG("decode_nullflag:     NULL value. SKIP IT ~n"),
         {true, Data1, Opts1}
     end;
 
-decode_skipnull(Data, N, Opts) ->
+decode_nullflag(Data, N, Opts) ->
     {false, Data, Opts}.
