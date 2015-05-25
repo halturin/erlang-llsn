@@ -547,7 +547,7 @@ decode_ext(Value, Data, N, Opts) ->
                             T0 = Opts1#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
                             T2 = T1#typestree{next = self},
-                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], 
+                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack],
                                                 tt    = T2,
                                                 nullflag = ?LLSN_NULL},
                             decode_ext([], Data3, NN, NOpts)
@@ -562,7 +562,7 @@ decode_ext(Value, Data, N, Opts) ->
                             T0 = Opts1#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
                             T2 = T1#typestree{next = self},
-                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack], 
+                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack],
                                                 tt = T2,
                                                 nullflag = 0},
                             decode_ext([], Data3, NN, NOpts)

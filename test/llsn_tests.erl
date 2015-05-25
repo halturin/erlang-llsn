@@ -116,10 +116,18 @@ get_exampleMainValue() ->
     {{2015, 4, 15},{16, 56, 39, 678},{3,0}},            %% Field7 = 4 Apr, 2015 16:56:39.678 +0300
     null,                                               %% Field8
     {0, null},                                          %% Field9
-    [{0, null}, {0, null}, {0, null}, {0, null}, {0, null}], %% Field10
+    [{0, null}, {0, null}, {0, null}, {0, null}, {0, null}],        %% Field10
     null,                                               %% Field11
-    field12_array4,                                     %% Field12
-    field13_2array10,                                   %% Field13
+    [ {23, {24, null}}, {25, {22 {21, null}}}, null, {26, null}],   %% Field12
+
+    %% two dimensional array with null values
+    %% [null, null, [null,null,VALUE,null,VALUE], null,  null, null, null, null, [null,VALUE,null,VALUE], null]
+    [null, null,                                        %%
+        [null, null, {27, null} , null, {28, null}],    %%
+     null, null, null, null, null,                      %%
+        [null, {29, null} ,null, {30, {31, null}}]      %%
+    ],                                                  %% Field13
+
     <<8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 7, 7, 7>>,          %% Field14
     #llsn_file{name = "/tmp/llsntestfile"},             %% Field15
     null,                                               %% Field16
