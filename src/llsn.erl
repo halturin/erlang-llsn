@@ -544,7 +544,7 @@ decode_ext(Value, Data, N, Opts) ->
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
                         {NN, Data3} ->
-                            T0 = Opts1#dopts.tt#typestree{length = NN},
+                            T0 = Opts2#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
                             T2 = T1#typestree{next = self},
                             NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack],
@@ -559,7 +559,7 @@ decode_ext(Value, Data, N, Opts) ->
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
                         {NN, Data3} ->
-                            T0 = Opts1#dopts.tt#typestree{length = NN},
+                            T0 = Opts2#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
                             T2 = T1#typestree{next = self},
                             NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack],
@@ -739,7 +739,7 @@ decode_STRUCT(Value, N, Data, Opts) when Opts#dopts.tt#typestree.length == ?LLSN
             T = Opts#dopts.tt,
             T1 = T#typestree{length = Len},
             Opts1 = Opts#dopts{tt = T1, nullflag = ?LLSN_NULL},
-            decode_STRUCT(Value, Len, Data1, Opts1)
+            decode_STRUCT(Value, N, Data1, Opts1)
     end;
 
 decode_STRUCT(Value, N, Data, Opts) ->
