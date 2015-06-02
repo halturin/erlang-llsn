@@ -386,7 +386,7 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
 % stack processing
 decode_ext(Value, Data, 0, Opts) ->
     ?DBG("Pop from Stack ~n"),
-    [{StackValue, StackN} | StackT] = Opts#dopts.stack,
+    [{StackValue, StackN, NF} | StackT] = Opts#dopts.stack,
 
     TT      =   typesTree(parent, Opts#dopts.tt),
 
@@ -395,7 +395,7 @@ decode_ext(Value, Data, 0, Opts) ->
                         Flag = 0,
                         [list_to_tuple(lists:reverse(Value)) | StackValue];
                     _ ->
-                        Flag = Opts#dopts.nullflag,
+                        Flag = NF,
                         [lists:reverse(Value) | StackValue]
                 end,
 
@@ -547,7 +547,7 @@ decode_ext(Value, Data, N, Opts) ->
                             T0 = Opts2#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
                             T2 = T1#typestree{next = self},
-                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack],
+                            NOpts = Opts2#dopts{stack = [{Value, N-1, Opts2#dopts.nullflag} | Opts2#dopts.stack],
                                                 tt    = T2,
                                                 nullflag = ?LLSN_NULL},
                             decode_ext([], Data3, NN, NOpts)
@@ -562,7 +562,7 @@ decode_ext(Value, Data, N, Opts) ->
                             T0 = Opts2#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
                             T2 = T1#typestree{next = self},
-                            NOpts = Opts2#dopts{stack = [{Value, N-1} | Opts2#dopts.stack],
+                            NOpts = Opts2#dopts{stack = [{Value, N-1, Opts2#dopts.nullflag} | Opts2#dopts.stack],
                                                 tt = T2,
                                                 nullflag = 0},
                             decode_ext([], Data3, NN, NOpts)
@@ -738,14 +738,19 @@ decode_STRUCT(Value, N, Data, Opts) when Opts#dopts.tt#typestree.length == ?LLSN
         {Len, Data1} ->
             T = Opts#dopts.tt,
             T1 = T#typestree{length = Len},
-            Opts1 = Opts#dopts{tt = T1, nullflag = ?LLSN_NULL},
-            decode_STRUCT(Value, N, Data1, Opts1)
+            % Opts1 = Opts#dopts{tt = T1},
+            T2 = typesTree(child, T1),
+            NOpts = Opts#dopts{stack = [{Value, N-1, Opts#dopts.nullflag } | Opts#dopts.stack],
+                         tt  = T2,
+                    nullflag = ?LLSN_NULL},
+            {Data1, Len, NOpts}
     end;
 
 decode_STRUCT(Value, N, Data, Opts) ->
     T1 = typesTree(child, Opts#dopts.tt),
-    NOpts = Opts#dopts{stack = [{Value, N-1} | Opts#dopts.stack],
-                       tt    = T1},
+    NOpts = Opts#dopts{stack = [{Value, N-1, Opts#dopts.nullflag } | Opts#dopts.stack],
+                         tt  = T1,
+                    nullflag = 0},
     {Data, Opts#dopts.tt#typestree.length, NOpts}.
 
 %% =============================================================================
