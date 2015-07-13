@@ -118,7 +118,7 @@ get_exampleMainValue() ->
     {0, null},                                          %% Field9
     [{0, null}, {0, null}, {0, null}, {0, null}, {0, null}],        %% Field10
     null,                                               %% Field11
-    [ {23, {24, null}}, {25, {22 {21, null}}}, null, {26, null}],   %% Field12
+    [ {23, {24, null}}, {25, {22, {21, null}}}, null, {26, null}],   %% Field12
 
     %% two dimensional array with null values
     %% [null, null, [null,null,VALUE,null,VALUE], null,  null, null, null, null, [null,VALUE,null,VALUE], null]
