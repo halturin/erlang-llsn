@@ -386,22 +386,20 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
 % stack processing
 decode_ext(Value, Data, 0, Opts) ->
     ?DBG("Pop from Stack ~n"),
-    [{StackValue, StackN, NF} | StackT] = Opts#dopts.stack,
+    [{StackValue, StackN, NullFlag} | StackT] = Opts#dopts.stack,
 
     TT      =   typesTree(parent, Opts#dopts.tt),
 
     NValue  =   case TT#typestree.type of
                     ?LLSN_TYPE_STRUCT ->
-                        Flag = NF, % Flag = 0,
                         [list_to_tuple(lists:reverse(Value)) | StackValue];
                     _ ->
-                        Flag = NF,
                         [lists:reverse(Value) | StackValue]
                 end,
 
     NOpts   =   Opts#dopts{stack = StackT,
                            tt    = typesTree(next, TT),
-                           nullflag = Flag},
+                           nullflag = NullFlag},
 
     decode_ext(NValue, Data, StackN, NOpts);
 
