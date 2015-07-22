@@ -30,7 +30,7 @@
 
 % encode options
 -record(options, {
-    % threshold for the huge data (string, blob, file). put it to the end of packet
+    % threshold for the huge data (string, blob, file).
     threshold :: non_neg_integer(),
     pid, % send frames of the encoded data to the PID
     framesize, % frame size limit
@@ -392,7 +392,7 @@ decode_ext(Value, Data, 0, Opts) ->
 
     NValue  =   case TT#typestree.type of
                     ?LLSN_TYPE_STRUCT ->
-                        Flag = 0,
+                        Flag = NF, % Flag = 0,
                         [list_to_tuple(lists:reverse(Value)) | StackValue];
                     _ ->
                         Flag = NF,
@@ -570,9 +570,9 @@ decode_ext(Value, Data, N, Opts) ->
 
                 Null when Null > ?LLSN_NULL_TYPES  ->
                     ?DBG("decode_ext NULL~n"),
-                    T0   = Opts1#dopts.tt,
+                    T0   = Opts2#dopts.tt,
                     T1 = typesTree(next, T0#typestree{type = ?LLSN_TYPE_UNDEFINED_NULL - Null}),
-                    decode_ext([?LLSN_NULL|Value], Data2, N-1, Opts1#dopts{tt = T1})
+                    decode_ext([?LLSN_NULL|Value], Data2, N-1, Opts2#dopts{tt = T1})
 
             end
 
@@ -768,7 +768,7 @@ typesTree(new) ->
         parent   = ?LLSN_NULL,
 
         % nullflag = ?LLSN_NULL,
-        length   = ?LLSN_NULL }. % set it true when struct is decoded (all field types is knowing)
+        length   = ?LLSN_NULL }. % set it true when struct is decoded (all field types are defined)
 
 typesTree(next, Current) when Current#typestree.next == self ->
     Current;
