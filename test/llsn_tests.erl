@@ -125,8 +125,8 @@ get_exampleMainValue() ->
     [null, null,                                        %%
         [null, null, {27, null} , null, {28, null}],    %%
      null, null, null, null, null,                      %%
-        [null, {29, null} ,null, {30, {31, null}}]      %%
-    ],                                                  %% Field13
+        [null, {29, null} ,null, {30, {31, null}}],      %%
+     null],                                                  %% Field13
 
     <<8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 7, 7, 7>>,          %% Field14
     #llsn_file{name = "/tmp/llsntestfile"},             %% Field15

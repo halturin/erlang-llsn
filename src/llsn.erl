@@ -369,7 +369,7 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
             decode_ext(Value, Data, 0, NOpts);
 
 
-        [{flat,TailH} | TailT] ->
+        [{blob,TailH} | TailT] ->
             ?DBG("Tail handling: BLOB"),
             NOpts = Opts#dopts{tail = TailT},
             decode_ext(Value, Data, 0, NOpts);
@@ -685,7 +685,33 @@ decode_BLOB(Data, Opts) ->
 %% =============================================================================
 % FIXME
 decode_FILE(Data, Opts) ->
-    {file, Data, Opts}.
+    case decode_UNUMBER(Data) of
+        {parted, _} ->
+            {parted, Data, Opts};
+        {FileSize, DataTail} ->
+            case decode_UNUMBER(DataTail) of
+                {parted, _} ->
+                    {parted, Data, Opts};
+                {FileNameSize, DataTail1} ->
+                    case DataTail1 of 
+                        <<FileName:FileNameSize/binary-unit:8, DataTail2/binary>> ->
+                            if FileSize > Opts#dopts.threshold, Opts#dopts.threshold > 0 ->
+                                % {ok, File} = file:open(FileName, [write, binary]),
+                                % F = {File, FileSize, }
+                                ?DBG("decode_ext File '~p' size: ~p ~n", [FileName, FileSize]),
+                                Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {file, {FileName, FileSize}} ])},
+                                {tail, DataTail2, Opts1};
+
+                            true ->
+                                {{file}, DataTail1, Opts}
+
+                            end;
+                        _ ->
+                            {parted, Data, Opts}
+                    end
+
+            end
+    end.
 
 
 %% =============================================================================
