@@ -56,6 +56,10 @@
 -define(LLSN_TYPE_STRING_MAXBYTES,      10485760).
 -define(LLSN_TYPE_BLOB_MAXBYTES,      4294967296).
 
+% file decoding temporary directory
+-define(LLSN_DEFAULT_DIR,           "/tmp/").
+-define(LLSN_DEFAULT_FILEPREFIX,    "llsn").
+
 
 -record(llsn_date_d, {
     year    :: integer(),
@@ -83,8 +87,7 @@
 
 -record(llsn_file, {
     name    :: string(),
-    tmpname :: string(),    %% temporary filename. using on decode files.
-    f                       %% file descriptor file:open(...)
+    tmp     :: string()    %% temporary filename. using on decode files.
     }).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

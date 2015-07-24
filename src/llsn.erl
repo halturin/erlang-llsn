@@ -328,7 +328,9 @@ encode_BOOL(_)    -> {<<0:8/big-unsigned-integer>>, 1}.
                 tail,
                 stack,
                 tt, % typestree
-                nullflag
+                nullflag,
+                chunk, % uses for partial data of string,blob,file
+                dir
                }).
 
 
@@ -343,7 +345,9 @@ decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
             Opts = #dopts{threshold = Threshold,
                     stack     = [],
                     tail      = [],
-                    tt        = typesTree(new)},
+                    tt        = typesTree(new),
+                    chunk     = null,
+                    dir       = ?LLSN_DEFAULT_DIR},
             decode_ext([], Data1, N, Opts)
     end;
 
@@ -684,7 +688,14 @@ decode_BLOB(Data, Opts) ->
 %% Files
 %% =============================================================================
 % FIXME
-decode_FILE(Data, Opts) ->
+
+% file chunk
+-record(chunkFile, {fileSize :: non_neg_integer(),
+                    f, % llsn_file
+                    fd % file descriptor
+               }).
+
+decode_FILE(Data, Opts) when Opts#dopts.chunk == null ->
     case decode_UNUMBER(Data) of
         {parted, _} ->
             {parted, Data, Opts};
@@ -693,24 +704,67 @@ decode_FILE(Data, Opts) ->
                 {parted, _} ->
                     {parted, Data, Opts};
                 {FileNameSize, DataTail1} ->
-                    case DataTail1 of 
+                    case DataTail1 of
                         <<FileName:FileNameSize/binary-unit:8, DataTail2/binary>> ->
+                            TmpFileName = lists:flatten(io_lib:format(?LLSN_DEFAULT_FILEPREFIX"-~p.~p.~p",
+                                                                      tuple_to_list(now()))),
+                            TmpFile     = Opts#dopts.dir ++ TmpFileName,
+
+                            File = #llsn_file{
+                                name    = FileName,
+                                tmp     = TmpFile
+                            },
+
                             if FileSize > Opts#dopts.threshold, Opts#dopts.threshold > 0 ->
-                                % {ok, File} = file:open(FileName, [write, binary]),
-                                % F = {File, FileSize, }
-                                ?DBG("decode_ext File '~p' size: ~p ~n", [FileName, FileSize]),
-                                Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {file, {FileName, FileSize}} ])},
+                                Chunk = #chunkFile{
+                                    fileSize = FileSize,
+                                    f        = File,
+                                    fd       = null
+                                },
+
+                                Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {file, Chunk} ])},
                                 {tail, DataTail2, Opts1};
 
                             true ->
-                                {{file}, DataTail1, Opts}
-
+                                {ok, FD} = file:open(TmpFile, [write, binary]),
+                                Chunk = #chunkFile{
+                                    fileSize = FileSize,
+                                    f        = File,
+                                    fd       = FD
+                                },
+                                decode_FILE(DataTail2, Opts#dopts{chunk = Chunk})
                             end;
                         _ ->
                             {parted, Data, Opts}
                     end
 
             end
+    end;
+
+decode_FILE(Data, Opts) when Opts#dopts.chunk#chunkFile.fd == null ->
+
+    Chunk   = Opts#dopts.chunk,
+    File    = Chunk#chunkFile.f,
+    {ok, FD}    = file:open(File#llsn_file.tmp, [write, binary]),
+
+    decode_FILE(Data, Opts#dopts{chunk = Chunk#chunkFile{fd = FD}} );
+
+decode_FILE(Data, Opts) ->
+    Chunk   = Opts#dopts.chunk,
+    DSize   = size(Data),
+    if DSize < Chunk#chunkFile.fileSize ->
+        file:write(Data, Chunk#chunkFile.fd),
+        FSize = Chunk#chunkFile.fileSize - DSize,
+        Chunk1 = Chunk#chunkFile {fileSize = FSize},
+
+        {parted, <<>>, Opts#dopts{chunk = Chunk1}};
+    true ->
+        Len = Chunk#chunkFile.fileSize,
+        <<FileData:Len/binary-unit:8, Tail/binary>> = Data,
+        file:write(FileData, Chunk#chunkFile.fd),
+        file:close(Chunk#chunkFile.fd),
+
+        {Chunk#chunkFile.f, Tail, Opts#dopts{chunk = null}}
     end.
 
 
