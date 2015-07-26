@@ -11,7 +11,7 @@
 %% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 %% GNU Library General Public License for more details.
 %%
-%% Full license: https://github.com/allyst/go-llsn/blob/master/LICENSE
+%% Full license: https://github.com/allyst/erlang-llsn/blob/master/LICENSE
 %%
 %% copyright (C) 2015 Allyst Inc. http://allyst.com
 %% author Taras Halturin <halturin@allyst.com>
@@ -367,24 +367,40 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
         [] ->
             % done
             list_to_tuple(lists:reverse(Value));
-        [{string,TailH} | TailT] ->
+        [{string, XY, Len} | Tail] ->
             ?DBG("Tail handling: STRING"),
-            NOpts = Opts#dopts{tail = TailT},
-            decode_ext(Value, Data, 0, NOpts);
+            case Data of
+                <<BinStrValue:Len/binary-unit:8, DataTail/binary>> ->
+                    StrValue = unicode:characters_to_list(BinStrValue, utf8),
+                    NOpts = Opts#dopts{tail = Tail},
+                    NewValue = tail_replacexy(XY, Value, StrValue),
+                    decode_ext(NewValue, DataTail, 0, NOpts);
+                _ ->
+                    {parted, Data, Opts}
+            end;
 
-
-        [{blob,TailH} | TailT] ->
+        [{blob, XY, Len} | Tail] ->
             ?DBG("Tail handling: BLOB"),
-            NOpts = Opts#dopts{tail = TailT},
-            decode_ext(Value, Data, 0, NOpts);
+            case Data of
+                <<BinValue:Len/binary-unit:8, DataTail/binary>> ->
+                    NOpts = Opts#dopts{tail = Tail},
+                    NewValue = tail_replacexy(XY, Value, BinValue),
+                    decode_ext(NewValue, DataTail, 0, NOpts);
+                _ ->
+                    {parted, Data, Opts}
+            end;
 
-        [{file, _File} | TailT] ->
+        [{file, XY, Chunk} | Tail] ->
             %  доделать нормальную обработку файла
             ?DBG("Tail handling: FILE"),
-            FTMP = <<"fffiiillleee">>,
-            NOpts = Opts#dopts{tail = TailT},
-            decode_ext(Value, Data, 0, NOpts)
+            case decode_FILE(0, Data, Opts#dopts{tail = Tail, threshold = 0, chunk = Chunk}) of
+                {parted, DataTail, NOpts} ->
+                    {parted, DataTail, NOpts};
 
+                {FileValue, DataTail, NOpts} ->
+                    NewValue = tail_replacexy(XY, Value, FileValue),
+                    decode_ext(NewValue, Data, 0, NOpts)
+            end
     end;
 
 % stack processing
@@ -478,7 +494,7 @@ decode_ext(Value, Data, N, Opts) ->
 
                 ?LLSN_TYPE_STRING ->
                     ?DBG("decode_ext STRING~n"),
-                    case decode_STRING(Data2, Opts2) of
+                    case decode_STRING(length(Value)+1, Data2, Opts2) of
                         {parted, _, _} ->
                             {parted, {Value, Data2, N, Opts2}};
                         {tail, Data3, Opts3} ->
@@ -508,7 +524,7 @@ decode_ext(Value, Data, N, Opts) ->
 
                 ?LLSN_TYPE_BLOB ->
                     ?DBG("decode_ext BLOB~n"),
-                    case decode_BLOB(Data2, Opts2) of
+                    case decode_BLOB(length(Value)+1, Data2, Opts2) of
                         {parted, _, _} ->
                             {parted, {Value, Data2, N, Opts2}};
                         {tail, Data3, Opts3} ->
@@ -520,7 +536,7 @@ decode_ext(Value, Data, N, Opts) ->
 
                 ?LLSN_TYPE_FILE ->
                     ?DBG("decode_ext FILE~n"),
-                    case decode_FILE(Data2, Opts2) of
+                    case decode_FILE(length(Value)+1, Data2, Opts2) of
                         {parted, _, _} ->
                             {parted, {Value, Data2, N, Opts2}};
                         {tail, Data3, Opts3} ->
@@ -644,13 +660,14 @@ decode_FLOAT(Data) ->
 %% =============================================================================
 %% Strings
 %% =============================================================================
-decode_STRING(Data, Opts) ->
+decode_STRING(L, Data, Opts) ->
     case decode_UNUMBER(Data) of
         {parted, _}     ->
             {parted, Data, Opts};
         {Len, DataTail} ->
             if Len > Opts#dopts.threshold, Opts#dopts.threshold > 0 ->
-                    Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {string, Len} ])},
+                    XY = tail_getxy(L, Opts, []),
+                    Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {string, XY, Len} ])},
                     {tail, DataTail, Opts1};
                 true ->
                     case DataTail of
@@ -666,13 +683,14 @@ decode_STRING(Data, Opts) ->
 %% =============================================================================
 %% Blobs
 %% =============================================================================
-decode_BLOB(Data, Opts) ->
+decode_BLOB(L, Data, Opts) ->
     case decode_UNUMBER(Data) of
         {parted, _} ->
             {parted, Data, Opts};
         {Len, DataTail} ->
             if Len > Opts#dopts.threshold, Opts#dopts.threshold > 0 ->
-                    Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {blob, Len} ])},
+                    XY = tail_getxy(L, Opts, []),
+                    Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {blob, XY, Len} ])},
                     {tail, DataTail, Opts1};
                 true ->
                     case DataTail of
@@ -695,7 +713,7 @@ decode_BLOB(Data, Opts) ->
                     fd % file descriptor
                }).
 
-decode_FILE(Data, Opts) when Opts#dopts.chunk == null ->
+decode_FILE(L, Data, Opts) when Opts#dopts.chunk == null ->
     case decode_UNUMBER(Data) of
         {parted, _} ->
             {parted, Data, Opts};
@@ -721,8 +739,8 @@ decode_FILE(Data, Opts) when Opts#dopts.chunk == null ->
                                     f        = File,
                                     fd       = null
                                 },
-
-                                Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {file, Chunk} ])},
+                                XY = tail_getxy(L, Opts, []),
+                                Opts1 = Opts#dopts{tail = lists:append(Opts#dopts.tail, [ {file, XY, Chunk} ])},
                                 {tail, DataTail2, Opts1};
 
                             true ->
@@ -732,7 +750,7 @@ decode_FILE(Data, Opts) when Opts#dopts.chunk == null ->
                                     f        = File,
                                     fd       = FD
                                 },
-                                decode_FILE(DataTail2, Opts#dopts{chunk = Chunk})
+                                decode_FILE(L, DataTail2, Opts#dopts{chunk = Chunk})
                             end;
                         _ ->
                             {parted, Data, Opts}
@@ -741,15 +759,15 @@ decode_FILE(Data, Opts) when Opts#dopts.chunk == null ->
             end
     end;
 
-decode_FILE(Data, Opts) when Opts#dopts.chunk#chunkFile.fd == null ->
+decode_FILE(L, Data, Opts) when Opts#dopts.chunk#chunkFile.fd == null ->
 
     Chunk   = Opts#dopts.chunk,
     File    = Chunk#chunkFile.f,
     {ok, FD}    = file:open(File#llsn_file.tmp, [write, binary]),
 
-    decode_FILE(Data, Opts#dopts{chunk = Chunk#chunkFile{fd = FD}} );
+    decode_FILE(L, Data, Opts#dopts{chunk = Chunk#chunkFile{fd = FD}} );
 
-decode_FILE(Data, Opts) ->
+decode_FILE(_L, Data, Opts) ->
     Chunk   = Opts#dopts.chunk,
     DSize   = size(Data),
     if DSize < Chunk#chunkFile.fileSize ->
@@ -761,7 +779,7 @@ decode_FILE(Data, Opts) ->
     true ->
         Len = Chunk#chunkFile.fileSize,
         <<FileData:Len/binary-unit:8, Tail/binary>> = Data,
-        file:write(FileData, Chunk#chunkFile.fd),
+        file:write(Chunk#chunkFile.fd, FileData),
         file:close(Chunk#chunkFile.fd),
 
         {Chunk#chunkFile.f, Tail, Opts#dopts{chunk = null}}
@@ -887,10 +905,10 @@ readbin(Data, Len) ->
         {Bin, Tail}.
 
 % checking for null flags
-decode_nullflag(<<>>, N, Opts) ->
+decode_nullflag(<<>>, _N, _Opts) ->
     parted;
 
-decode_nullflag(Data, N, Opts) when Opts#dopts.tt#typestree.parent == ?LLSN_NULL ->
+decode_nullflag(Data, _N, Opts) when Opts#dopts.tt#typestree.parent == ?LLSN_NULL ->
     {false, Data, Opts};
 
 decode_nullflag(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
@@ -916,5 +934,28 @@ decode_nullflag(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
         {true, Data1, Opts1}
     end;
 
-decode_nullflag(Data, N, Opts) ->
+decode_nullflag(Data, _N, Opts) ->
     {false, Data, Opts}.
+
+
+tail_getxy(N, Opts, XY) when Opts#dopts.stack == [] ->
+    [N | XY];
+
+tail_getxy(N, Opts, XY) ->
+    [{StackValue, _, _} | StackT] = Opts#dopts.stack,
+    Opts1 = Opts#dopts{stack = StackT},
+    tail_getxy(length(StackValue) + 1 ,Opts1, [N | XY]).
+
+tail_replacexy([X|Y], Value, NewElement) when Y == [], is_tuple(Value) ->
+    setelement(X, Value, NewElement);
+
+tail_replacexy([X|Y], Value, NewElement) when Y == [], is_list(Value) ->
+    setelement_l(X, Value, NewElement);
+
+
+tail_replacexy([X|Y], Value, NewElement) ->
+    [H|T] = Value,
+    [NewElement|T].
+
+setelement_l(1, [_|Rest], New) -> [New|Rest];
+setelement_l(I, [E|Rest], New) -> [E|setelement_l(I-1, Rest, New)].
