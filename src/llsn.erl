@@ -27,7 +27,7 @@
 -export([decode/1]).
 
 -export([decode_NUMBER/1, decode_UNUMBER/1]).
--export ([decode_DATE/1, encode_DATE/1]).
+-export ([decode_DATE/1, encode_DATE/1, slow_stream/2]).
 % encode options
 -record(options, {
     % threshold for the huge data (string, blob, file).
@@ -360,6 +360,9 @@ decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
 decode(Data) ->
     {malformed, Data}.
 
+decode(parted, {Value, Data, N, Opts}, NextData) ->
+    decode_ext(Value, <<Data/binary,NextData/binary>>, N, Opts).
+
 
 % stack processing is done. tail processing
 decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
@@ -377,7 +380,7 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
                     NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, StrValue),
                     decode_ext(NewValue, DataTail, 0, NOpts);
                 _ ->
-                    {parted, Data, Opts}
+                    {parted, Data, 0, Opts}
             end;
 
         [{blob, [X|Y], Len} | Tail] ->
@@ -388,13 +391,13 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
                     NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, BinValue),
                     decode_ext(NewValue, DataTail, 0, NOpts);
                 _ ->
-                    {parted, Data, Opts}
+                    {parted, Data, 0, Opts}
             end;
 
         [{file, [X|Y], Chunk} | Tail] ->
             case decode_FILE(0, Data, Opts#dopts{tail = Tail, threshold = 0, chunk = Chunk}) of
                 {parted, DataTail, NOpts} ->
-                    {parted, DataTail, NOpts};
+                    {parted, DataTail, 0, NOpts};
 
                 {FileValue, DataTail, NOpts} ->
                     NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, FileValue),
@@ -936,3 +939,21 @@ tail_replacexy([X|Y], Value, NewElement) ->
 
 setelement_l(1, [_|Rest], New) -> [New|Rest];
 setelement_l(I, [E|Rest], New) -> [E|setelement_l(I-1, Rest, New)].
+
+
+%% REMOVE ME AFTER FIX slow stream unittest
+slow_stream(<<Bin:3/binary-unit:8, Tail/binary>>, null) ->
+    case decode(Bin) of
+        {parted, X} ->
+            slow_stream(Tail, X);
+        Value ->
+            Value
+    end;
+
+slow_stream(<<Bin:1/binary-unit:8, Tail/binary>>, Opts) ->
+    case decode(parted, Opts, Bin) of
+        {parted, X} ->
+            slow_stream(Tail, X);
+        Value ->
+            Value
+    end.

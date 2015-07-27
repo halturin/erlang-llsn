@@ -47,7 +47,7 @@ llsn_encode_unsigned_numbers_test() ->
 llsn_random_signed_NUMBER(0) ->
     ok;
 llsn_random_signed_NUMBER(N) ->
-    Num = gen_random_signed_number(),
+    Num = llsn_gen:random_signed_number(),
     {BinNum, _} = llsn:encode_NUMBER(Num),
     {DecNum, _} = llsn:decode_NUMBER(BinNum),
     ?assert(Num =:= DecNum),
@@ -60,7 +60,7 @@ llsn_1K_random_signed_NUMBER_test() ->
 llsn_random_unsigned_NUMBER(0) ->
     ok;
 llsn_random_unsigned_NUMBER(N) ->
-    Num = gen_random_unsigned_number(),
+    Num = llsn_gen:random_unsigned_number(),
     {BinNum, _} = llsn:encode_UNUMBER(Num),
     {DecNum, _} = llsn:decode_UNUMBER(BinNum),
     ?assert(Num =:= DecNum),
@@ -89,6 +89,40 @@ llsn_decodeComplexStruct_test() ->
     ValueBin = get_exampleMainValueEncoded(),
     Value = llsn:decode(ValueBin),
     % we have to remove 'origin' from 'llsn_file' 
+    F0 = element(15, Value),
+    io:format("~p ~n", [F0]),
+    F1 = F0#llsn_file{origin = null},
+    Value1 = setelement(15, Value, F1),
+
+    MainValue = get_exampleMainValue(),
+    FF0 = element(15, MainValue),
+    FF1 = FF0#llsn_file{origin = null},
+    MainValue1 = setelement(15, MainValue, FF1),
+
+    ?assert(Value1 =:= MainValue1).
+
+slow_stream(<<Bin:24/binary, Tail/binary>>, null) ->
+    case llsn:decode(Bin) of
+        {parted, X} ->
+            slow_stream(Tail, X);
+        Value ->
+            Value
+    end;
+
+slow_stream(<<Bin:8/binary, Tail/binary>>, Opts) ->
+    case llsn:decode(parted, Opts, Bin) of
+        {parted, X} ->
+            slow_stream(Tail, X);
+        Value ->
+            Value
+    end.
+
+
+
+llsn_decodeComplexStructSlowStream_test() ->
+    ValueBin = get_exampleMainValueEncoded(),
+    Value = slow_stream(ValueBin, null),
+    % we have to remove 'origin' from 'llsn_file'
     F0 = element(15, Value),
     io:format("~p ~n", [F0]),
     F1 = F0#llsn_file{origin = null},
