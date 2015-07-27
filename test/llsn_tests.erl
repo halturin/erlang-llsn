@@ -200,12 +200,4 @@ get_unsigned_numbers() ->
     18446744073709551615 % 9 (<<255,255,255,255,255,255,255,255,255>>)
     ].
 
-gen_random_signed_number() ->
-    NL = 1 bsl crypto:rand_uniform(0,4), % 1byte, 2, 4, 8 num len
-    <<Value:NL/big-signed-integer-unit:8>> = crypto:rand_bytes(NL),
-    Value.
 
-gen_random_unsigned_number() ->
-    NL = 1 bsl crypto:rand_uniform(0,4), % 1byte, 2, 4, 8 num len
-    <<Value:NL/big-unsigned-integer-unit:8>> = crypto:rand_bytes(NL),
-    Value.
