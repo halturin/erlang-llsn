@@ -87,8 +87,10 @@
 
 -record(llsn_file, {
     name    :: string(),
-    tmp     :: string()    %% temporary filename. using on decode files.
+    origin  :: string()    %% temporary filename. using on decode files.
     }).
+
+-define (LLSN_FILE (File),          #llsn_file{name = filename:basename(File), origin = File}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% for development purposes only

@@ -367,30 +367,32 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
         [] ->
             % done
             list_to_tuple(lists:reverse(Value));
-        [{string, XY, Len} | Tail] ->
+        [{string, [X|Y], Len} | Tail] ->
             ?DBG("Tail handling: STRING"),
             case Data of
                 <<BinStrValue:Len/binary-unit:8, DataTail/binary>> ->
                     StrValue = unicode:characters_to_list(BinStrValue, utf8),
                     NOpts = Opts#dopts{tail = Tail},
-                    NewValue = tail_replacexy(XY, Value, StrValue),
+                    % the first level of Value is reversed. fix the first element
+                    % of the XY list
+                    NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, StrValue),
                     decode_ext(NewValue, DataTail, 0, NOpts);
                 _ ->
                     {parted, Data, Opts}
             end;
 
-        [{blob, XY, Len} | Tail] ->
+        [{blob, [X|Y], Len} | Tail] ->
             ?DBG("Tail handling: BLOB"),
             case Data of
                 <<BinValue:Len/binary-unit:8, DataTail/binary>> ->
                     NOpts = Opts#dopts{tail = Tail},
-                    NewValue = tail_replacexy(XY, Value, BinValue),
+                    NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, BinValue),
                     decode_ext(NewValue, DataTail, 0, NOpts);
                 _ ->
                     {parted, Data, Opts}
             end;
 
-        [{file, XY, Chunk} | Tail] ->
+        [{file, [X|Y], Chunk} | Tail] ->
             %  доделать нормальную обработку файла
             ?DBG("Tail handling: FILE"),
             case decode_FILE(0, Data, Opts#dopts{tail = Tail, threshold = 0, chunk = Chunk}) of
@@ -398,7 +400,7 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
                     {parted, DataTail, NOpts};
 
                 {FileValue, DataTail, NOpts} ->
-                    NewValue = tail_replacexy(XY, Value, FileValue),
+                    NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, FileValue),
                     decode_ext(NewValue, Data, 0, NOpts)
             end
     end;
@@ -723,14 +725,15 @@ decode_FILE(L, Data, Opts) when Opts#dopts.chunk == null ->
                     {parted, Data, Opts};
                 {FileNameSize, DataTail1} ->
                     case DataTail1 of
-                        <<FileName:FileNameSize/binary-unit:8, DataTail2/binary>> ->
+                        <<FileNameBin:FileNameSize/binary-unit:8, DataTail2/binary>> ->
                             TmpFileName = lists:flatten(io_lib:format(?LLSN_DEFAULT_FILEPREFIX"-~p.~p.~p",
                                                                       tuple_to_list(now()))),
                             TmpFile     = Opts#dopts.dir ++ TmpFileName,
+                            FileName    = unicode:characters_to_list(FileNameBin, utf8),
 
                             File = #llsn_file{
                                 name    = FileName,
-                                tmp     = TmpFile
+                                origin  = TmpFile
                             },
 
                             if FileSize > Opts#dopts.threshold, Opts#dopts.threshold > 0 ->
@@ -763,7 +766,7 @@ decode_FILE(L, Data, Opts) when Opts#dopts.chunk#chunkFile.fd == null ->
 
     Chunk   = Opts#dopts.chunk,
     File    = Chunk#chunkFile.f,
-    {ok, FD}    = file:open(File#llsn_file.tmp, [write, binary]),
+    {ok, FD}    = file:open(File#llsn_file.origin, [write, binary]),
 
     decode_FILE(L, Data, Opts#dopts{chunk = Chunk#chunkFile{fd = FD}} );
 
