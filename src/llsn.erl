@@ -27,7 +27,7 @@
 -export([decode/1]).
 
 -export([decode_NUMBER/1, decode_UNUMBER/1]).
-
+-export ([decode_DATE/1, encode_DATE/1]).
 % encode options
 -record(options, {
     % threshold for the huge data (string, blob, file).
@@ -368,7 +368,6 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
             % done
             list_to_tuple(lists:reverse(Value));
         [{string, [X|Y], Len} | Tail] ->
-            ?DBG("Tail handling: STRING"),
             case Data of
                 <<BinStrValue:Len/binary-unit:8, DataTail/binary>> ->
                     StrValue = unicode:characters_to_list(BinStrValue, utf8),
@@ -382,7 +381,7 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
             end;
 
         [{blob, [X|Y], Len} | Tail] ->
-            ?DBG("Tail handling: BLOB"),
+
             case Data of
                 <<BinValue:Len/binary-unit:8, DataTail/binary>> ->
                     NOpts = Opts#dopts{tail = Tail},
@@ -393,8 +392,6 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
             end;
 
         [{file, [X|Y], Chunk} | Tail] ->
-            %  доделать нормальную обработку файла
-            ?DBG("Tail handling: FILE"),
             case decode_FILE(0, Data, Opts#dopts{tail = Tail, threshold = 0, chunk = Chunk}) of
                 {parted, DataTail, NOpts} ->
                     {parted, DataTail, NOpts};
@@ -407,7 +404,6 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
 
 % stack processing
 decode_ext(Value, Data, 0, Opts) ->
-    ?DBG("Pop from Stack ~n"),
     [{StackValue, StackN, NullFlag} | StackT] = Opts#dopts.stack,
 
     TT      =   typesTree(parent, Opts#dopts.tt),
@@ -427,8 +423,6 @@ decode_ext(Value, Data, 0, Opts) ->
 
 
 decode_ext(Value, Data, N, Opts) ->
-    ?DBG("~n~n~n ########### [N:~p] ~p", [N, Opts]),
-
     case decode_nullflag(Data, N, Opts) of
         % null value. skip it.
         {true, Data1, Opts1} ->
@@ -443,9 +437,7 @@ decode_ext(Value, Data, N, Opts) ->
         % decode value
         {false, Data1, Opts1} ->
             T = Opts1#dopts.tt,
-            ?DBG("decode_ext BUFFER: ~w ~n", [Data1]),
             if T#typestree.type == ?LLSN_TYPE_UNDEFINED ->
-                ?DBG("decode_ext READ Type"),
                 case readbin(Data1, 1) of
                     {parted, Data2} ->
                         Type = parted;
@@ -468,7 +460,6 @@ decode_ext(Value, Data, N, Opts) ->
                     {parted, {Value, Data1, N, Opts1}};
 
                 ?LLSN_TYPE_NUMBER ->
-                    ?DBG("decode_ext NUMBER~n"),
                     case decode_NUMBER(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -477,7 +468,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_UNUMBER ->
-                    ?DBG("decode_ext UNUMBER~n"),
                     case decode_UNUMBER(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -486,7 +476,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_FLOAT ->
-                    ?DBG("decode_ext FLOAT~n"),
                     case decode_FLOAT(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -495,7 +484,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_STRING ->
-                    ?DBG("decode_ext STRING~n"),
                     case decode_STRING(length(Value)+1, Data2, Opts2) of
                         {parted, _, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -507,7 +495,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_DATE ->
-                    ?DBG("decode_ext DATE~n"),
                     case decode_DATE(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -516,7 +503,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_BOOL ->
-                    ?DBG("decode_ext BOOL~n"),
                     case decode_BOOL(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -525,7 +511,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_BLOB ->
-                    ?DBG("decode_ext BLOB~n"),
                     case decode_BLOB(length(Value)+1, Data2, Opts2) of
                         {parted, _, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -537,7 +522,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_FILE ->
-                    ?DBG("decode_ext FILE~n"),
                     case decode_FILE(length(Value)+1, Data2, Opts2) of
                         {parted, _, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -549,7 +533,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_STRUCT ->
-                    ?DBG("decode_ext STRUCT ~n"),
                     case decode_STRUCT(Value, N, Data2, Opts2) of
                         parted ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -559,7 +542,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_ARRAY ->
-                    ?DBG("decode_ext ARRAY ~n"),
                     case decode_UNUMBER(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -574,7 +556,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 ?LLSN_TYPE_ARRAYN ->
-                    ?DBG("decode_ext ARRAY with NULL ~n"),
                     case decode_UNUMBER(Data2) of
                         {parted, _} ->
                             {parted, {Value, Data2, N, Opts2}};
@@ -589,7 +570,6 @@ decode_ext(Value, Data, N, Opts) ->
                     end;
 
                 Null when Null > ?LLSN_NULL_TYPES  ->
-                    ?DBG("decode_ext NULL~n"),
                     T0   = Opts2#dopts.tt,
                     T1 = typesTree(next, T0#typestree{type = ?LLSN_TYPE_UNDEFINED_NULL - Null}),
                     decode_ext([?LLSN_NULL|Value], Data2, N-1, Opts2#dopts{tt = T1})
@@ -606,12 +586,10 @@ decode_ext(Value, Data, N, Opts) ->
 %% =============================================================================
 decode_NUMBER(Data) ->
     % decode signed number
-    ?DBG("decode NUMBER ~n"),
     decode_NUMBER(signed, Data).
 
 decode_UNUMBER(Data) ->
     % decode unsigned number
-    ?DBG("decode UNUMBER ~n"),
     decode_NUMBER(unsigned, Data).
 
 decode_NUMBER(unsigned, <<2#0:1/big-unsigned-integer,        Num:7/big-unsigned-integer,  Tail/binary>>) -> {Num, Tail};
@@ -918,9 +896,7 @@ decode_nullflag(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
     T   = Opts#dopts.tt,
     Parent = T#typestree.parent,
     Pos = (8 - ((Parent#typestree.length - N) rem 8)),
-    ?DBG("decode_nullflag:    Pos:[~p] N:[~p] len:[~p] ",[Pos, N, Parent#typestree.length]),
     if Pos == 8 ->
-        ?DBG("decode_nullflag:     read NULL flag byte. "),
         <<NF:8/big-unsigned-integer, Data1/binary>>  = Data,
         Opts1   = Opts#dopts{nullflag = NF};
 
@@ -930,10 +906,8 @@ decode_nullflag(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
     end,
 
     if Opts1#dopts.nullflag band (1 bsl (Pos - 1)) == 0 ->
-        ?DBG("decode_nullflag:     not skip ~n"),
         {false, Data1, Opts1};
     true ->
-        ?DBG("decode_nullflag:     NULL value. SKIP IT ~n"),
         {true, Data1, Opts1}
     end;
 

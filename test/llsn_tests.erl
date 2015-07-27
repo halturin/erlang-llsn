@@ -88,8 +88,18 @@ llsn_encodeComplexStruct_with_Framing_test() ->
 llsn_decodeComplexStruct_test() ->
     ValueBin = get_exampleMainValueEncoded(),
     Value = llsn:decode(ValueBin),
+    % we have to remove 'origin' from 'llsn_file' 
+    F0 = element(15, Value),
+    io:format("~p ~n", [F0]),
+    F1 = F0#llsn_file{origin = null},
+    Value1 = setelement(15, Value, F1),
+
     MainValue = get_exampleMainValue(),
-    ?assert(Value =:= MainValue).
+    FF0 = element(15, MainValue),
+    FF1 = FF0#llsn_file{origin = null},
+    MainValue1 = setelement(15, MainValue, FF1),
+
+    ?assert(Value1 =:= MainValue1).
 
 llsn_decodeComplexStruct_with_Framing_test() ->
     ok.
@@ -117,7 +127,7 @@ get_exampleMainValue() ->
     [true, false, true],                %% Field4
     3.141596,                           %% Field5
     "Hello World. 你好世界. مرحبا بالعالم. こんにちは世界. Γειά Σου Κόσμε. העלא וועלט. Привет Мир.",
-    {{2015, 4, 15},{16, 56, 39, 678},{3,0}},            %% Field7 = 4 Apr, 2015 16:56:39.678 +0300
+    {{2015, 4, 15},{16, 56, 39, 678},{0,0}},            %% Field7 = 4 Apr, 2015 16:56:39.678 +0000
     null,                                               %% Field8
     {0, null},                                          %% Field9
     [{0, null}, {0, null}, {0, null}, {0, null}, {0, null}],        %% Field10
