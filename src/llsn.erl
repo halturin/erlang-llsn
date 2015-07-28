@@ -24,10 +24,10 @@
 
 -export([encode_NUMBER/1, encode_UNUMBER/1]).
 
--export([decode/1]).
+-export([decode/1, decode/3]).
 
 -export([decode_NUMBER/1, decode_UNUMBER/1]).
--export ([decode_DATE/1, encode_DATE/1, slow_stream/2]).
+-export ([decode_DATE/1, encode_DATE/1]).
 % encode options
 -record(options, {
     % threshold for the huge data (string, blob, file).
@@ -360,7 +360,7 @@ decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
 decode(Data) ->
     {malformed, Data}.
 
-decode(parted, {Value, Data, N, Opts}, NextData) ->
+decode(continue, {Value, Data, N, Opts}, NextData) ->
     decode_ext(Value, <<Data/binary,NextData/binary>>, N, Opts).
 
 
@@ -380,7 +380,7 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
                     NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, StrValue),
                     decode_ext(NewValue, DataTail, 0, NOpts);
                 _ ->
-                    {parted, Data, 0, Opts}
+                    {parted, {Value, Data, 0, Opts}}
             end;
 
         [{blob, [X|Y], Len} | Tail] ->
@@ -391,17 +391,18 @@ decode_ext(Value, Data, 0, Opts) when Opts#dopts.stack == [] ->
                     NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, BinValue),
                     decode_ext(NewValue, DataTail, 0, NOpts);
                 _ ->
-                    {parted, Data, 0, Opts}
+                    {parted, {Value, Data, 0, Opts}}
             end;
 
         [{file, [X|Y], Chunk} | Tail] ->
             case decode_FILE(0, Data, Opts#dopts{tail = Tail, threshold = 0, chunk = Chunk}) of
                 {parted, DataTail, NOpts} ->
-                    {parted, DataTail, 0, NOpts};
+                    NewTail = [{file, [X|Y], NOpts#dopts.chunk} | Tail],
+                    {parted, {Value, DataTail, 0, NOpts#dopts{tail = NewTail}}};
 
                 {FileValue, DataTail, NOpts} ->
                     NewValue = tail_replacexy([length(Value) - X + 1|Y], Value, FileValue),
-                    decode_ext(NewValue, Data, 0, NOpts)
+                    decode_ext(NewValue, DataTail, 0, NOpts)
             end
     end;
 
@@ -437,18 +438,14 @@ decode_ext(Value, Data, N, Opts) ->
         parted ->
             {parted, {Value, Data, N, Opts}};
 
+        {_, <<>>, _} ->
+            {parted, {Value, Data, N, Opts}};
+
         % decode value
         {false, Data1, Opts1} ->
             T = Opts1#dopts.tt,
             if T#typestree.type == ?LLSN_TYPE_UNDEFINED ->
-                case readbin(Data1, 1) of
-                    {parted, Data2} ->
-                        Type = parted;
-                    {B, Data2} ->
-                        <<Type:8/big-unsigned-integer>> = B,
-                        pass
-                end,
-
+                <<Type:8/big-unsigned-integer, Data2/binary>> = Data1,
                 Opts2   = Opts1#dopts{tt = T#typestree{type = Type}};
             true ->
                 Type    = T#typestree.type,
@@ -459,13 +456,10 @@ decode_ext(Value, Data, N, Opts) ->
             TT = typesTree(next, Opts2#dopts.tt),
 
             case Type of
-                parted ->
-                    {parted, {Value, Data1, N, Opts1}};
-
                 ?LLSN_TYPE_NUMBER ->
                     case decode_NUMBER(Data2) of
                         {parted, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {NValue, Data3} ->
                             decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
                     end;
@@ -473,7 +467,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_UNUMBER ->
                     case decode_UNUMBER(Data2) of
                         {parted, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {NValue, Data3} ->
                             decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
                     end;
@@ -481,7 +475,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_FLOAT ->
                     case decode_FLOAT(Data2) of
                         {parted, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {NValue, Data3} ->
                             decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
                     end;
@@ -489,7 +483,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_STRING ->
                     case decode_STRING(length(Value)+1, Data2, Opts2) of
                         {parted, _, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {tail, Data3, Opts3} ->
                             % FIXME. tail processing
                             decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
@@ -500,7 +494,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_DATE ->
                     case decode_DATE(Data2) of
                         {parted, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {NValue, Data3} ->
                             decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
                     end;
@@ -508,7 +502,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_BOOL ->
                     case decode_BOOL(Data2) of
                         {parted, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {NValue, Data3} ->
                             decode_ext([NValue|Value], Data3, N-1, Opts2#dopts{tt = TT})
                     end;
@@ -516,7 +510,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_BLOB ->
                     case decode_BLOB(length(Value)+1, Data2, Opts2) of
                         {parted, _, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {tail, Data3, Opts3} ->
                             % FIXME. tail processing
                             decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
@@ -538,7 +532,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_STRUCT ->
                     case decode_STRUCT(Value, N, Data2, Opts2) of
                         parted ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
 
                         {Data3, NN, Opts3} ->
                             decode_ext([], Data3, NN, Opts3)
@@ -547,7 +541,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_ARRAY ->
                     case decode_UNUMBER(Data2) of
                         {parted, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {NN, Data3} ->
                             T0 = Opts2#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
@@ -561,7 +555,7 @@ decode_ext(Value, Data, N, Opts) ->
                 ?LLSN_TYPE_ARRAYN ->
                     case decode_UNUMBER(Data2) of
                         {parted, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                            {parted, {Value, Data, N, Opts}};
                         {NN, Data3} ->
                             T0 = Opts2#dopts.tt#typestree{length = NN},
                             T1 = typesTree(child, T0),
@@ -755,7 +749,7 @@ decode_FILE(_L, Data, Opts) ->
     Chunk   = Opts#dopts.chunk,
     DSize   = size(Data),
     if DSize < Chunk#chunkFile.fileSize ->
-        file:write(Data, Chunk#chunkFile.fd),
+        file:write(Chunk#chunkFile.fd, Data),
         FSize = Chunk#chunkFile.fileSize - DSize,
         Chunk1 = Chunk#chunkFile {fileSize = FSize},
 
@@ -882,12 +876,6 @@ typesTree(parent, Current) ->
     typesTree(parent, T#typestree{next   = ParentNext,
                                   parent = Current#typestree.parent}).
 
-readbin(Data, Len) when length(Data) < Len ->
-        {parted, Data};
-readbin(Data, Len) ->
-        <<Bin:Len/binary-unit:8, Tail/binary>> = Data,
-        {Bin, Tail}.
-
 % checking for null flags
 decode_nullflag(<<>>, _N, _Opts) ->
     parted;
@@ -939,21 +927,3 @@ tail_replacexy([X|Y], Value, NewElement) ->
 
 setelement_l(1, [_|Rest], New) -> [New|Rest];
 setelement_l(I, [E|Rest], New) -> [E|setelement_l(I-1, Rest, New)].
-
-
-%% REMOVE ME AFTER FIX slow stream unittest
-slow_stream(<<Bin:3/binary-unit:8, Tail/binary>>, null) ->
-    case decode(Bin) of
-        {parted, X} ->
-            slow_stream(Tail, X);
-        Value ->
-            Value
-    end;
-
-slow_stream(<<Bin:1/binary-unit:8, Tail/binary>>, Opts) ->
-    case decode(parted, Opts, Bin) of
-        {parted, X} ->
-            slow_stream(Tail, X);
-        Value ->
-            Value
-    end.
