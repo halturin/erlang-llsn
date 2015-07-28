@@ -28,31 +28,30 @@
 
 -export([decode_NUMBER/1, decode_UNUMBER/1]).
 -export ([decode_DATE/1, encode_DATE/1]).
-% encode options
--record(options, {
-    % threshold for the huge data (string, blob, file).
-    threshold :: non_neg_integer(),
-    pid, % send frames of the encoded data to the PID
-    framesize, % frame size limit
-    frame :: non_neg_integer(), % frame number
-    binsize, % current size of encoded data
-    userdata :: list(), % use it with framing encode data
-    tail, % list of the huge items
-    stack, % needs for incapsulated structs/arrays
-    struct, % needs for POINTER type processing
-    tt % tree of the types
-}).
 
+% Tree of the types. Uses for encode and decode data.
 -record(typestree, {
     type        :: non_neg_integer(),
+    next,       % next 'typestree' item
+    prev,       % 
+    child,      % 
+    parent,     % 
+    length      :: non_neg_integer() % length of array/struct
+}).
 
-    next,
-    prev,
-    child,
-    parent,
+% encode options
+-record(eopts, {
 
-    length      :: non_neg_integer()
-    % nullflag
+    threshold   :: non_neg_integer(), % threshold for the huge data (string, blob, file).
+    pid         :: pid(), % send frames of the encoded data to the PID
+    frame       :: non_neg_integer(), % frame number
+    framesize   :: non_neg_integer(), % size of encoded data
+    framelimit  :: non_neg_integer(), % frame size limit. default value
+    userdata    :: list(), % using on encoding frames to help identify by PID
+    tail        :: list(), % tail packed items exceeds the 'threshold'
+    stack       :: list(), % needs for incapsulated structs/arrays
+    struct      :: tuple(), % needs for POINTER type processing
+    tt          % tree of the types
 }).
 
 
@@ -63,29 +62,28 @@
 % with no framing and default threshold
 
 encode(Packet, Struct) when is_tuple(Packet) and is_tuple(Struct) ->
-    Options = #options{
-        threshold = ?LLSN_DEFAULT_THRESHOLD,
-        framesize = ?LLSN_DEFAULT_FRAME_SIZE,
-        frame = 1,
-        binsize = 0,
-        tail = [],
-        stack = [],
-        tt = typesTree(new)
+    Options = #eopts{
+        threshold       = ?LLSN_DEFAULT_THRESHOLD,
+        framelimit      = 0,
+        frame           = 1,
+        tail            = [],
+        stack           = [],
+        tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
 % with framing and default threshold
 encode(Packet, Struct, PID) when is_pid(PID)
         and is_tuple(Packet) and is_tuple(Struct) ->
-    Options = #options{
-        threshold = ?LLSN_DEFAULT_THRESHOLD,
-        framesize = ?LLSN_DEFAULT_FRAME_SIZE,
-        frame = 1,
-        binsize = 0,
-        tail = [],
-        stack = [],
-        pid = PID,
-        tt = typesTree(new)
+    Options = #eopts{
+        threshold       = ?LLSN_DEFAULT_THRESHOLD,
+        framelimit      = ?LLSN_DEFAULT_FRAME_LIMIT,
+        framesize       = 0,
+        frame           = 1,
+        tail            = [],
+        stack           = [],
+        pid             = PID,
+        tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options);
 
@@ -93,30 +91,30 @@ encode(Packet, Struct, PID) when is_pid(PID)
 % no framing and custom threshold
 encode(Packet, Struct, Threshold) when is_integer(Threshold)
         and is_tuple(Packet) and is_tuple(Struct) ->
-    Options = #options{
-        threshold = Threshold,
-        framesize = ?LLSN_DEFAULT_FRAME_SIZE,
-        frame = 1,
-        binsize = 0,
-        tail = [],
-        stack = [],
-        tt = typesTree(new)
+    Options = #eopts{
+        threshold       = Threshold,
+        framelimit      = 0,
+        framesize       = 0,
+        frame           = 1,
+        tail            = [],
+        stack           = [],
+        tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
 encode(Packet, Struct, PID, UserData) when is_pid(PID)
         and is_tuple(Packet) and is_tuple(Struct)
         and is_list(UserData) ->
-    Options = #options{
-        threshold = ?LLSN_DEFAULT_THRESHOLD,
-        framesize = ?LLSN_DEFAULT_FRAME_SIZE,
-        frame = 1,
-        binsize = 0,
-        tail = [],
-        stack = [],
-        pid = PID,
-        userdata = UserData,
-        tt = typesTree(new)
+    Options = #eopts{
+        threshold       = ?LLSN_DEFAULT_THRESHOLD,
+        framelimit      = ?LLSN_DEFAULT_FRAME_LIMIT,
+        framesize       = 0,
+        frame           = 1,
+        tail            = [],
+        stack           = [],
+        pid             = PID,
+        userdata        = UserData,
+        tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options);
 
@@ -124,15 +122,15 @@ encode(Packet, Struct, PID, UserData) when is_pid(PID)
 encode(Packet, Struct, PID, FrameLimit) when is_pid(PID)
         and is_integer(FrameLimit)
         and is_tuple(Packet) and is_tuple(Struct) ->
-    Options = #options{
-        threshold = ?LLSN_DEFAULT_THRESHOLD,
-        framesize = FrameLimit,
-        frame = 1,
-        binsize = 0,
-        tail = [],
-        stack = [],
-        pid = PID,
-        tt = typesTree(new)
+    Options = #eopts{
+        threshold       = ?LLSN_DEFAULT_THRESHOLD,
+        framelimit      = FrameLimit,
+        framesize       = 0,
+        frame           = 1,
+        tail            = [],
+        stack           = [],
+        pid             = PID,
+        tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
@@ -140,59 +138,71 @@ encode(Packet, Struct, PID, FrameLimit) when is_pid(PID)
 encode(Packet, Struct, PID, FrameLimit, UserData) when is_pid(PID)
         and is_integer(FrameLimit) and is_tuple(Packet)
         and is_tuple(Struct) and is_list(UserData)->
-    Options = #options{
-        threshold = ?LLSN_DEFAULT_THRESHOLD,
-        framesize = FrameLimit,
-        frame = 1,
-        binsize = 0,
-        tail = [],
-        stack = [],
-        pid = PID,
-        userdata = UserData, % using on encoding frames to help identify by PID
-        tt = typesTree(new)
+    Options = #eopts{
+        threshold       = ?LLSN_DEFAULT_THRESHOLD,
+        framelimit      = FrameLimit,
+        framesize       = 0,
+        frame           = 1,
+        tail            = [],
+        stack           = [],
+        pid             = PID,
+        userdata        = UserData,
+        tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
 
-encode_ext(Packet, Struct, #options{threshold = Threshold} = Opts) ->
-
+% Start encoding.
+encode_ext(Packet, Struct, #eopts{threshold = Threshold} = Opts) ->
     P   = tuple_to_list(Packet),
     Len = length(P),
+    Version = 1,
     {LenBin, LenBinLen} = encode_UNUMBER(Len),
-    Bin = <<Threshold:16/big-integer, LenBin/binary>>,
+    Bin = <<Version:4/big-unsigned-integer, Threshold:12/big-unsigned-integer, LenBin/binary>>,
 
-    Opts = #options{
-            framesize    = 2 + LenBinLen, % first 2 bytes for threshold + N bytes for the number of elements
+    Opts = #eopts{
+            framesize    = 2 + LenBinLen, % first 2 bytes for the version and threshold
             struct       = Struct
             },
 
 
-    encode_STRUCT(P, tuple_to_list(Struct), Bin, Opts).
+    encode_ext(P, tuple_to_list(Struct), Bin, Opts).
 
-framing(Bin, #options{framesize    = FrameSize,
-                frame  = FrameNumber,
-                pid          = PID,
-                userdata = UserData} = Opts, Value, ValueLen)
-        when is_pid(PID), FrameSize + ValueLen >= ?LLSN_DEFAULT_FRAME_SIZE  ->
-    Space = ?LLSN_DEFAULT_FRAME_SIZE - FrameSize,
-    <<ValueHead:Space/binary-unit:8, ValueTail/binary>> = Value,
-    Frame = <<Bin/binary, ValueHead/binary>>,
-    % send it to the PID
-    erlang:send(
-        PID,
-        {frame, FrameNumber, FrameSize + Space, Frame, UserData}
-        ),
-    % process tail to the new frame
-    framing(<<>>, Opts#options{framesize   = 0,
-                             frame = FrameNumber + 1 },
-            ValueTail, ValueLen - Space);
-framing(Bin, Opts, Value, ValueLen) ->
-    { <<Bin/binary, Value/binary>>, Opts#options{framesize = Opts#options.framesize + ValueLen} }.
+% stack processing is done. work with tail...
+encode_ext([], Struct, Bin, Opts) when Opts#eopts.stack == [] ->
+    case Opts#eopts.tail of
+        [] ->
+            % finished
+            if is_pid(Opts#eopts.pid) ->
+                Opts#eopts.pid ! {done, Opts#eopts.frame, Opts#eopts.framesize, Bin, Opts#eopts.userdata};
+            true ->
+                Bin
+            end;
+        [{file, #llsn_file{origin = File} } | Tail] ->
+            ?DBG("Tail. File encoding"),
+            % FIXME FIXME FIXME FIXME FIXME
+            {Bin1, Opts1} = framing(Bin, Opts, File, byte_size(File)),
+            Opts2 = Opts1#eopts{tail = Tail},
+            encode_ext([], Struct, Bin1, Opts2);
 
+        [{data, Data} | Tail] ->
+            ?DBG("Tail. String/Blob encoding"),
+            {Bin1, Opts1} = framing(Bin, Opts, Data, byte_size(Data)),
+            Opts2 = Opts1#eopts{tail = Tail},
+            encode_ext([], Struct, Bin1, Opts2)
+    end;
 
+% stack processing...
+encode_ext([], _, Bin, Opts) ->
+    case Opts#eopts.stack of
+        [{Packet, Struct} | Stack] ->
+            ?DBG("########### Pop from Stack"),
+            TT    = typesTree(parent, Opts#eopts.tt),
+            NOpts = Opts#eopts{stack = Stack, tt = typesTree(next, TT)},
+            encode_ext(Packet, Struct, Bin, NOpts)
+    end;
 
-
-encode_STRUCT(Value, Struct, Bin, Options) ->
+encode_ext(Packet, Struct, Bin, Options) ->
     ok.
 
 
@@ -298,9 +308,9 @@ encode_FLOAT(Value) ->
     {<<BP/binary,BM/binary>>, PL+ML}.
 
 
-% get GMT offset
+% FYI: how to get a GMT offset
 % calendar:time_difference(calendar:universal_time(), calendar:local_time()).
-% {0,{4,0,0}}
+% {_, {HourOffset, MinOffset, _}} = {0,{4,0,0}}
 
 encode_DATE({{Year, Month, Day},
                 {Hour, Min, Sec, MSec},
@@ -317,6 +327,26 @@ encode_DATE({{Year, Month, Day},
 
 encode_BOOL(true) -> {<<1:8/big-unsigned-integer>>, 1};
 encode_BOOL(_)    -> {<<0:8/big-unsigned-integer>>, 1}.
+
+encode_POINTER([S|_], [0]) ->
+    S;
+encode_POINTER(Struct, [0]) ->
+    Struct;
+encode_POINTER(Struct, [C|Coord]) ->
+    case C of
+        0 when is_tuple(Struct) ->
+            {_, Elements} = Struct,
+            encode_POINTER(Elements, Coord);
+        0 ->
+            [{_, Elements}|_] = Struct,
+            encode_POINTER(Elements, Coord);
+        N when is_tuple(Struct) ->
+            [_|S] = tuple_to_list(Struct),
+            encode_POINTER(S, [N-1|Coord]);
+        N ->
+            [_|S] = Struct,
+            encode_POINTER(S, [N-1|Coord])
+    end.
 
 
 %% =============================================================================
@@ -927,3 +957,55 @@ tail_replacexy([X|Y], Value, NewElement) ->
 
 setelement_l(1, [_|Rest], New) -> [New|Rest];
 setelement_l(I, [E|Rest], New) -> [E|setelement_l(I-1, Rest, New)].
+
+% we have to respect the frame limits and slice the packet if it exceeds the limit
+framing(Bin, #eopts{framesize = FrameSize,
+                      frame     = FrameNumber,
+                      framelimit= FrameLimit,
+                      pid       = PID,
+                      userdata  = UserData} = Opts, Value, ValueLen)
+        when is_pid(PID), FrameSize + ValueLen >= FrameLimit ->
+
+    Space = FrameLimit - FrameSize,
+    <<ValueHead:Space/binary-unit:8, ValueTail/binary>> = Value,
+    Frame = <<Bin/binary, ValueHead/binary>>,
+    % send it to the PID
+    erlang:send(
+        PID,
+        {frame, FrameNumber, FrameSize + Space, Frame, UserData}
+        ),
+    % process tail to the new frame
+    framing(<<>>, Opts#eopts{framesize   = 0,
+                             frame = FrameNumber + 1 },
+            ValueTail, ValueLen - Space);
+
+framing(Bin, Opts, Value, ValueLen) ->
+    { <<Bin/binary, Value/binary>>, Opts#eopts{framesize = Opts#eopts.framesize + ValueLen} }.
+
+% encoding NULL flag routines
+encode_nullflag([Flag | FlagListTail], N) when N rem 8 == 0 ->
+    % we have to trailing by the NULLFLAG-byte every 8 bytes of data
+    {<<Flag:8/big-integer>>, 1, {FlagListTail,  N + 1} };
+
+encode_nullflag(FlagList, N) ->
+    {<<>>, 0, {FlagList, N + 1}}.
+
+encode_nullflag_create(ValueList) ->
+    {ReversedNullFlags, _} = lists:foldl(
+            fun(Element, Acc) ->
+                    case Acc of
+                        {[ByteFlag|FlagsList], N} ->
+                            Pos = N rem 8,
+                            if Element == null -> BOR = 1 bsl (7 - Pos);
+                                true -> BOR = 0 end,
+
+                            if Pos > 0 ->  {[ByteFlag bor BOR |FlagsList], N + 1};
+                                true ->  {[0 bor BOR |[ByteFlag |FlagsList]], N + 1} end;
+                        _ ->
+                            % first item
+                            if Element == null -> {[1 bsl 7], 1};
+                                true -> {[0], 1} end
+                    end
+            end,
+            [], ValueList ),
+    {lists:reverse(ReversedNullFlags), 0}.

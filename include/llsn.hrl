@@ -11,7 +11,7 @@
 %% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 %% GNU Library General Public License for more details.
 %%
-%% Full license: https://github.com/allyst/go-llsn/blob/master/LICENSE
+%% Full license: https://github.com/allyst/erlang-llsn/blob/master/LICENSE
 %%
 %% copyright (C) 2014 Allyst Inc. http://allyst.com
 %% author Taras Halturin <halturin@allyst.com>
@@ -51,14 +51,14 @@
 
 
 -define(LLSN_NULL, null).
--define(LLSN_DEFAULT_THRESHOLD,        0).
--define(LLSN_DEFAULT_FRAME_SIZE,           49152). % 48K
--define(LLSN_TYPE_STRING_MAXBYTES,      10485760).
--define(LLSN_TYPE_BLOB_MAXBYTES,      4294967296).
+-define(LLSN_DEFAULT_THRESHOLD,         0). % value range: 0..4096
+-define(LLSN_DEFAULT_FRAME_LIMIT,       49152). % 48K
+-define(LLSN_TYPE_STRING_LIMIT,         10485760). % 1MB
+-define(LLSN_TYPE_BLOB_LIMIT,           4294967296). % 4GB
 
 % file decoding temporary directory
--define(LLSN_DEFAULT_DIR,           "/tmp/").
--define(LLSN_DEFAULT_FILEPREFIX,    "llsn").
+-define(LLSN_DEFAULT_DIR,               "/tmp/").
+-define(LLSN_DEFAULT_FILEPREFIX,        "llsn").
 
 
 -record(llsn_date_d, {
