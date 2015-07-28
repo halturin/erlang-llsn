@@ -11,7 +11,7 @@
 %% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 %% GNU Library General Public License for more details.
 %%
-%% Full license: https://github.com/allyst/go-llsn/blob/master/LICENSE
+%% Full license: https://github.com/allyst/erlang-llsn/blob/master/LICENSE
 %%
 %% copyright (C) 2015 Allyst Inc. http://allyst.com
 %% author Taras Halturin <halturin@allyst.com>

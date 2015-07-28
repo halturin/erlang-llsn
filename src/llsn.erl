@@ -167,7 +167,7 @@ encode_ext(Packet, Struct, #options{threshold = Threshold} = Opts) ->
             },
 
 
-    encode_struct(P, tuple_to_list(Struct), Bin, Opts).
+    encode_STRUCT(P, tuple_to_list(Struct), Bin, Opts).
 
 framing(Bin, #options{framesize    = FrameSize,
                 frame  = FrameNumber,
@@ -192,7 +192,7 @@ framing(Bin, Opts, Value, ValueLen) ->
 
 
 
-encode_struct(Value, Struct, Bin, Options) ->
+encode_STRUCT(Value, Struct, Bin, Options) ->
     ok.
 
 
