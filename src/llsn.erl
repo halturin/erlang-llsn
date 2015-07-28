@@ -165,7 +165,6 @@ encode_ext(Packet, Struct, #eopts{threshold = Threshold} = Opts) ->
             struct       = Struct
             },
 
-
     encode_ext(P, tuple_to_list(Struct), Bin, Opts).
 
 % stack processing is done. work with tail...
@@ -313,17 +312,17 @@ encode_FLOAT(Value) ->
 % {_, {HourOffset, MinOffset, _}} = {0,{4,0,0}}
 
 encode_DATE({{Year, Month, Day},
-                {Hour, Min, Sec, MSec},
-                {OffsetHour, OffsetMin}} = Date) ->
-    {<<Year:16/big-integer,
-            Month:4/big-unsigned-integer,
-            Day:5/big-unsigned-integer,
-            Hour:5/big-unsigned-integer,
-            Min:6/big-unsigned-integer,
-            Sec:6/big-unsigned-integer,
-            MSec:10/big-unsigned-integer,
-            OffsetHour:6/big-integer,
-            OffsetMin:6/big-unsigned-integer>>, 8}.
+             {Hour, Min, Sec, MSec},
+             {OffsetHour, OffsetMin}} = Date) ->
+    { <<Year:16/big-integer,
+        Month:4/big-unsigned-integer,
+        Day:5/big-unsigned-integer,
+        Hour:5/big-unsigned-integer,
+        Min:6/big-unsigned-integer,
+        Sec:6/big-unsigned-integer,
+        MSec:10/big-unsigned-integer,
+        OffsetHour:6/big-integer,
+        OffsetMin:6/big-unsigned-integer>>, 8 }.
 
 encode_BOOL(true) -> {<<1:8/big-unsigned-integer>>, 1};
 encode_BOOL(_)    -> {<<0:8/big-unsigned-integer>>, 1}.
@@ -992,20 +991,20 @@ encode_nullflag(FlagList, N) ->
 
 encode_nullflag_create(ValueList) ->
     {ReversedNullFlags, _} = lists:foldl(
-            fun(Element, Acc) ->
-                    case Acc of
-                        {[ByteFlag|FlagsList], N} ->
-                            Pos = N rem 8,
-                            if Element == null -> BOR = 1 bsl (7 - Pos);
-                                true -> BOR = 0 end,
+        fun(Element, Acc) ->
+                case Acc of
+                    {[ByteFlag|FlagsList], N} ->
+                        Pos = N rem 8,
+                        if Element == null -> BOR = 1 bsl (7 - Pos);
+                            true -> BOR = 0 end,
 
-                            if Pos > 0 ->  {[ByteFlag bor BOR |FlagsList], N + 1};
-                                true ->  {[0 bor BOR |[ByteFlag |FlagsList]], N + 1} end;
-                        _ ->
-                            % first item
-                            if Element == null -> {[1 bsl 7], 1};
-                                true -> {[0], 1} end
-                    end
-            end,
-            [], ValueList ),
+                        if Pos > 0 ->  {[ByteFlag bor BOR |FlagsList], N + 1};
+                            true ->  {[0 bor BOR |[ByteFlag |FlagsList]], N + 1} end;
+                    _ ->
+                        % first item
+                        if Element == null -> {[1 bsl 7], 1};
+                            true -> {[0], 1} end
+                end
+        end,
+        [], ValueList ),
     {lists:reverse(ReversedNullFlags), 0}.
