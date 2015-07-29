@@ -29,6 +29,9 @@
 -export([decode_NUMBER/1, decode_UNUMBER/1]).
 -export ([decode_DATE/1, encode_DATE/1]).
 
+
+-export ([encode_nullflag_create/1]).
+
 % Tree of the types. Uses for encode and decode data.
 -record(typestree, {
     type        :: non_neg_integer(),
@@ -51,6 +54,7 @@
     tail        :: list(), % tail packed items exceeds the 'threshold'
     stack       :: list(), % needs for incapsulated structs/arrays
     struct      :: tuple(), % needs for POINTER type processing
+    nullflag    :: list(),
     tt          % tree of the types
 }).
 
@@ -68,6 +72,7 @@ encode(Packet, Struct) when is_tuple(Packet) and is_tuple(Struct) ->
         frame           = 1,
         tail            = [],
         stack           = [],
+        nullflag        = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
@@ -83,6 +88,7 @@ encode(Packet, Struct, PID) when is_pid(PID)
         tail            = [],
         stack           = [],
         pid             = PID,
+        nullflag        = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options);
@@ -98,6 +104,7 @@ encode(Packet, Struct, Threshold) when is_integer(Threshold)
         frame           = 1,
         tail            = [],
         stack           = [],
+        nullflag        = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
@@ -114,6 +121,7 @@ encode(Packet, Struct, PID, UserData) when is_pid(PID)
         stack           = [],
         pid             = PID,
         userdata        = UserData,
+        nullflag        = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options);
@@ -130,6 +138,7 @@ encode(Packet, Struct, PID, FrameLimit) when is_pid(PID)
         tail            = [],
         stack           = [],
         pid             = PID,
+        nullflag        = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
@@ -147,13 +156,14 @@ encode(Packet, Struct, PID, FrameLimit, UserData) when is_pid(PID)
         stack           = [],
         pid             = PID,
         userdata        = UserData,
+        nullflag        = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
 
 
 % Start encoding.
-encode_ext(Packet, Struct, #eopts{threshold = Threshold} = Opts) ->
+encode_ext(Packet, Struct, #eopts{threshold = Threshold, tt = TT} = Opts) ->
     P   = tuple_to_list(Packet),
     Len = length(P),
     Version = 1,
@@ -162,7 +172,8 @@ encode_ext(Packet, Struct, #eopts{threshold = Threshold} = Opts) ->
 
     Opts = #eopts{
             framesize    = 2 + LenBinLen, % first 2 bytes for the version and threshold
-            struct       = Struct
+            struct       = Struct,
+            tt           = TT#typestree{type = ?LLSN_TYPE_STRUCT, length = Len}
             },
 
     encode_ext(P, tuple_to_list(Struct), Bin, Opts).
@@ -193,16 +204,133 @@ encode_ext([], Struct, Bin, Opts) when Opts#eopts.stack == [] ->
 
 % stack processing...
 encode_ext([], _, Bin, Opts) ->
-    case Opts#eopts.stack of
-        [{Packet, Struct} | Stack] ->
-            ?DBG("########### Pop from Stack"),
-            TT    = typesTree(parent, Opts#eopts.tt),
-            NOpts = Opts#eopts{stack = Stack, tt = typesTree(next, TT)},
-            encode_ext(Packet, Struct, Bin, NOpts)
-    end;
+    ?DBG("########### Pop from Stack"),
+    [{Packet, Struct, NullFlag} | Stack] = Opts#eopts.stack,
+    TT    = typesTree(parent, Opts#eopts.tt),
+    NOpts = Opts#eopts{stack = Stack, nullflag = NullFlag,
+                       tt = typesTree(next, TT)},
+    encode_ext(Packet, Struct, Bin, NOpts);
 
-encode_ext(Packet, Struct, Bin, Options) ->
-    ok.
+
+encode_ext([Value | Packet], [{?LLSN_TYPE_POINTER, Pointer} | Struct], Bin, Opts) ->
+    PStruct = encode_POINTER(Opts#eopts.struct, Pointer),
+    encode_ext([Value|Packet], [PStruct|Struct], Bin, Opts);
+
+% process null value
+encode_ext([?LLSN_NULL|Packet], [Type|Struct], Bin, Opts)
+                            when Opts#eopts.nullflag == ?LLSN_NULL ->
+    TT = Opts#eopts.tt,
+    case TT#typestree.type of
+        ?LLSN_TYPE_UNDEFINED ->
+            Type1 = ?LLSN_TYPE_UNDEFINED_NULL - Type,
+            BinType = <<Type1/big-unsigned-integer>>,
+            BinTypeLen = 1,
+            TT = Opts#eopts.tt#typestree{type = Type};
+        _ ->
+            BinType = <<>>, BinTypeLen = 0,
+            TT = Opts#eopts.tt
+    end,
+
+    TT1 = typesTree(next, TT),
+    % FIXME!!! call framing
+    encode_ext(Packet, Struct, Bin, Opts);
+
+encode_ext([?LLSN_NULL|Packet], [Type|Struct], Bin, Opts) ->
+    {BinNullFlag, BinNullFlagSize, NullFlag} = encode_nullflag(Opts#eopts.nullflag),
+    TT = Opts#eopts.tt,
+    NOpts = Opts#eopts{tt = typesTree(next, TT)},
+    % FIXME!!! call framing
+    encode_ext(Packet, Struct, Bin, NOpts);
+
+
+% main encoding process routine
+encode_ext([Value|Packet], [Type|Struct], Bin, Opts) ->
+    {BinNullFlag, BinNullFlagSize, NullFlag} = encode_nullflag(Opts#eopts.nullflag),
+
+    case Opts#eopts.tt#typestree.type of
+        ?LLSN_TYPE_UNDEFINED ->
+            BinType = <<Type/big-unsigned-integer>>,
+            BinTypeLen = 1,
+            TT = Opts#eopts.tt#typestree{type = Type};
+        _ ->
+            BinType = <<>>, BinTypeLen = 0,
+            TT = Opts#eopts.tt
+    end,
+
+    case Type of
+        ?LLSN_TYPE_NUMBER ->
+            {BinValue, BinValueLen} = encode_NUMBER(Value),
+            TT1     = typesTree(next, TT),
+            Opts1   = Opts#eopts{tt = TT1, nullflag = NullFlag},
+            Bin1    = <<BinNullFlag/binary, BinType/binary, BinValue/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + BinValueLen,
+            {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+            encode_ext(Packet, Struct, Bin2, Opts2);
+
+        ?LLSN_TYPE_UNUMBER ->
+            {BinValue, BinValueLen} = encode_UNUMBER(Value),
+            TT1     = typesTree(next, TT),
+            Opts1   = Opts#eopts{tt = TT1, nullflag = NullFlag},
+            Bin1    = <<BinNullFlag/binary, BinType/binary, BinValue/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + BinValueLen,
+            {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+            encode_ext(Packet, Struct, Bin2, Opts2);
+
+        ?LLSN_TYPE_FLOAT ->
+            {BinValue, BinValueLen} = encode_FLOAT(Value),
+            TT1     = typesTree(next, TT),
+            Opts1   = Opts#eopts{tt = TT1, nullflag = NullFlag},
+            Bin1    = <<BinNullFlag/binary, BinType/binary, BinValue/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + BinValueLen,
+            {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+            encode_ext(Packet, Struct, Bin2, Opts2);
+
+        ?LLSN_TYPE_STRING ->
+            {BinValue, BinValueLen, NOpts} = encode_STRING(Value, Opts);
+
+        ?LLSN_TYPE_BOOL ->
+            {BinValue, BinValueLen} = encode_BOOL(Value),
+            TT1     = typesTree(next, TT),
+            Opts1   = Opts#eopts{tt = TT1, nullflag = NullFlag},
+            Bin1    = <<BinNullFlag/binary, BinType/binary, BinValue/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + BinValueLen,
+            {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+            encode_ext(Packet, Struct, Bin2, Opts2);
+
+        ?LLSN_TYPE_BLOB ->
+            {BinValue, BinValueLen, NOpts} = encode_BLOB(Value, Opts);
+
+        ?LLSN_TYPE_DATE ->
+            {BinValue, BinValueLen} = encode_DATE(Value),
+            TT1     = typesTree(next, TT),
+            Opts1   = Opts#eopts{tt = TT1, nullflag = NullFlag},
+            Bin1    = <<BinNullFlag/binary, BinType/binary, BinValue/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + BinValueLen,
+            {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+            encode_ext(Packet, Struct, Bin2, Opts2);
+
+        ?LLSN_TYPE_FILE ->
+            {BinValue, BinValueLen, NOpts} = encode_FILE(Value, Opts);
+
+        {?LLSN_TYPE_STRUCT, ValueStruct} ->
+            TT = Opts#eopts.tt,
+            TT1 = typesTree(child, TT),
+            pass;
+
+
+
+        {Array, ValueArray} when Array == ?LLSN_TYPE_ARRAY; % array or array with null values
+                                 Array == ?LLSN_TYPE_ARRAYN ->
+            TT = Opts#eopts.tt,
+            TT1 = typesTree(child, TT),
+            TT2 = TT1#typestree{next = self}
+
+
+
+
+
+
+    end.
 
 
 
@@ -346,6 +474,35 @@ encode_POINTER(Struct, [C|Coord]) ->
             [_|S] = Struct,
             encode_POINTER(S, [N-1|Coord])
     end.
+
+encode_STRING(Value, Opts) ->
+    BinValue = unicode:characters_to_binary(Value, utf8),
+    if byte_size(BinValue) > ?LLSN_TYPE_STRING_LIMIT ->
+        throw("The limit of string length is exceeded")
+    end,
+
+    encode_BLOB(BinValue, Opts).
+
+encode_BLOB(Value, Opts) ->
+    ValueSize = byte_size(Value),
+
+    if byte_size(ValueSize) > ?LLSN_TYPE_BLOB_LIMIT ->
+        throw("The limit of blob length is exceeded")
+    end,
+
+    {ValueSizeBin, ValueSizeBinLen} = encode_UNUMBER(ValueSize),
+
+    if ValueSize > Opts#eopts.threshold, Opts#eopts.threshold > 0 ->
+            Opts1 = Opts#eopts{tail = lists:append(Opts#eopts.tail, [ {flat, Value} ])},
+            {<<ValueSizeBin/binary>>, ValueSizeBinLen, Opts1};
+
+        true ->
+            {<<ValueSizeBin/binary, Value/binary>>,
+                ValueSizeBinLen + ValueSize, Opts}
+    end.
+
+encode_FILE(File, Opts) ->
+    pass.
 
 
 %% =============================================================================
@@ -982,12 +1139,16 @@ framing(Bin, Opts, Value, ValueLen) ->
     { <<Bin/binary, Value/binary>>, Opts#eopts{framesize = Opts#eopts.framesize + ValueLen} }.
 
 % encoding NULL flag routines
-encode_nullflag([Flag | FlagListTail], N) when N rem 8 == 0 ->
-    % we have to trailing by the NULLFLAG-byte every 8 bytes of data
-    {<<Flag:8/big-integer>>, 1, {FlagListTail,  N + 1} };
+encode_nullflag({[Flag | FlagTail], N}) when N rem 8 == 0 ->
+    % every 8 bytes should have NULL-flag byte
+    {<<Flag:8/big-integer>>, 1, {FlagTail,  N + 1} };
 
-encode_nullflag(FlagList, N) ->
+encode_nullflag(?LLSN_NULL) ->
+    {<<>>, 0, ?LLSN_NULL};
+
+encode_nullflag({FlagList, N}) ->
     {<<>>, 0, {FlagList, N + 1}}.
+
 
 encode_nullflag_create(ValueList) ->
     {ReversedNullFlags, _} = lists:foldl(
@@ -1007,4 +1168,4 @@ encode_nullflag_create(ValueList) ->
                 end
         end,
         [], ValueList ),
-    {lists:reverse(ReversedNullFlags), 0}.
+    {lists:reverse(ReversedNullFlags),0}.
