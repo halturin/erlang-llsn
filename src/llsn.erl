@@ -170,13 +170,13 @@ encode_ext(Packet, Struct, #eopts{threshold = Threshold, tt = TT} = Opts) ->
     {LenBin, LenBinLen} = encode_UNUMBER(Len),
     Bin = <<Version:4/big-unsigned-integer, Threshold:12/big-unsigned-integer, LenBin/binary>>,
 
-    Opts = #eopts{
+    Opts1 = Opts#eopts{
             framesize    = 2 + LenBinLen, % first 2 bytes for the version and threshold
-            struct       = Struct,
-            tt           = TT#typestree{type = ?LLSN_TYPE_STRUCT, length = Len}
+            struct       = Struct
+            % tt           = TT#typestree{type = ?LLSN_TYPE_STRUCT, length = Len}
             },
 
-    encode_ext(P, tuple_to_list(Struct), Bin, Opts).
+    encode_ext(P, tuple_to_list(Struct), Bin, Opts1).
 
 % stack processing is done. work with tail...
 encode_ext([], Struct, Bin, Opts) when Opts#eopts.stack == [] ->
@@ -211,14 +211,25 @@ encode_ext([], _, Bin, Opts) ->
                        tt = typesTree(next, TT)},
     encode_ext(Packet, Struct, Bin, NOpts);
 
+encode_ext([Value | Packet], {?LLSN_TYPE_POINTER, Pointer}, Bin, Opts) ->
+    PStruct = encode_POINTER(Opts#eopts.struct, Pointer),
+    encode_ext([Value|Packet], PStruct, Bin, Opts);
 
 encode_ext([Value | Packet], [{?LLSN_TYPE_POINTER, Pointer} | Struct], Bin, Opts) ->
     PStruct = encode_POINTER(Opts#eopts.struct, Pointer),
     encode_ext([Value|Packet], [PStruct|Struct], Bin, Opts);
 
+
 % process null value
-encode_ext([?LLSN_NULL|Packet], [Type|Struct], Bin, Opts)
+encode_ext([?LLSN_NULL|Packet], TypeStruct, Bin, Opts)
                             when Opts#eopts.nullflag == ?LLSN_NULL ->
+    case TypeStruct of
+        [Type|Struct] ->
+            pass;
+        Type ->
+            Struct = Type
+    end,
+
     TT = Opts#eopts.tt,
     case TT#typestree.type of
         ?LLSN_TYPE_UNDEFINED ->
@@ -235,20 +246,45 @@ encode_ext([?LLSN_NULL|Packet], [Type|Struct], Bin, Opts)
     % FIXME!!! call framing
     encode_ext(Packet, Struct, Bin, Opts);
 
-encode_ext([?LLSN_NULL|Packet], [Type|Struct], Bin, Opts) ->
-    {BinNullFlag, BinNullFlagSize, NullFlag} = encode_nullflag(Opts#eopts.nullflag),
-    TT = Opts#eopts.tt,
-    NOpts = Opts#eopts{tt = typesTree(next, TT)},
-    % FIXME!!! call framing
-    encode_ext(Packet, Struct, Bin, NOpts);
+encode_ext([?LLSN_NULL|Packet], TypeStruct, Bin, Opts) ->
+    case TypeStruct of
+        [Type|Struct] ->
+            pass;
+        Type ->
+            Struct = Type
+    end,
 
+    {BinNullFlag, BinNullFlagSize, NullFlag} = encode_nullflag(Opts#eopts.nullflag),
+
+    TT = Opts#eopts.tt,
+    Opts1 = Opts#eopts{tt = typesTree(next, TT), nullflag = NullFlag},
+
+    if BinNullFlag == <<>> ->
+        encode_ext(Packet, Struct, Bin, Opts1);
+    true ->
+        {Bin1, Opts2} = framing(Bin, Opts1, BinNullFlag, BinNullFlagSize),
+        encode_ext(Packet, Struct, Bin1, Opts2)
+    end;
 
 % main encoding process routine
-encode_ext([Value|Packet], [Type|Struct], Bin, Opts) ->
+encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
     {BinNullFlag, BinNullFlagSize, NullFlag} = encode_nullflag(Opts#eopts.nullflag),
 
+    case TypeStruct of
+        [Type|Struct] ->
+            pass;
+        Type ->
+            Struct = Type
+    end,
+
     case Opts#eopts.tt#typestree.type of
-        ?LLSN_TYPE_UNDEFINED ->
+        ?LLSN_TYPE_UNDEFINED when is_tuple(Type) ->
+            {Type1, _} = Type,
+            BinType = <<Type1/big-unsigned-integer>>,
+            BinTypeLen = 1,
+            TT = Opts#eopts.tt#typestree{type = Type1};
+
+        ?LLSN_TYPE_UNDEFINED  ->
             BinType = <<Type/big-unsigned-integer>>,
             BinTypeLen = 1,
             TT = Opts#eopts.tt#typestree{type = Type};
@@ -314,21 +350,27 @@ encode_ext([Value|Packet], [Type|Struct], Bin, Opts) ->
 
         {?LLSN_TYPE_STRUCT, ValueStruct} ->
             TT = Opts#eopts.tt,
-            TT1 = typesTree(child, TT),
-            pass;
+            TT1 = typesTree(child, TT);
 
-
-
-        {Array, ValueArray} when Array == ?LLSN_TYPE_ARRAY; % array or array with null values
+        {Array, ArrayOf} when Array == ?LLSN_TYPE_ARRAY; % array or array with null values
                                  Array == ?LLSN_TYPE_ARRAYN ->
-            TT = Opts#eopts.tt,
-            TT1 = typesTree(child, TT),
-            TT2 = TT1#typestree{next = self}
+            ArrayLen = length(Value),
+            {ArrayLenBin, ArrayLenBinLen} = encode_UNUMBER(ArrayLen),
+            TT1      = typesTree(child, TT#typestree{length = ArrayLen}),
+            TT2      = TT1#typestree{next = self},
 
+            NullFlagNew = encode_nullflag_create(Value),
 
+            Bin1    = <<BinNullFlag/binary, BinType/binary, ArrayLenBin/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + ArrayLenBinLen,
 
+            Opts1 = Opts#eopts{stack = [{Packet, Struct, NullFlag}| Opts#eopts.stack],
+                                  tt = TT2,
+                            nullflag = NullFlagNew},
 
+            {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
 
+            encode_ext(Value, ArrayOf, Bin2, Opts2)
 
     end.
 
