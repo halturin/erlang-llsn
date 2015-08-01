@@ -26,7 +26,7 @@
 
 -export([decode/1, decode/3]).
 
--export([decode_NUMBER/1, decode_UNUMBER/1]).
+-export([decode_NUMBER/1, decode_UNUMBER/1, encode_POINTER/2]).
 -export ([decode_DATE/1, encode_DATE/1]).
 
 
@@ -163,7 +163,7 @@ encode(Packet, Struct, PID, FrameLimit, UserData) when is_pid(PID)
 
 
 % Start encoding.
-encode_ext(Packet, Struct, #eopts{threshold = Threshold, tt = TT} = Opts) ->
+encode_ext(Packet, Struct, #eopts{threshold = Threshold} = Opts) ->
     P   = tuple_to_list(Packet),
     Len = length(P),
     Version = 1,
@@ -173,7 +173,6 @@ encode_ext(Packet, Struct, #eopts{threshold = Threshold, tt = TT} = Opts) ->
     Opts1 = Opts#eopts{
             framesize    = 2 + LenBinLen, % first 2 bytes for the version and threshold
             struct       = Struct
-            % tt           = TT#typestree{type = ?LLSN_TYPE_STRUCT, length = Len}
             },
 
     encode_ext(P, tuple_to_list(Struct), Bin, Opts1).
@@ -233,25 +232,31 @@ encode_ext([?LLSN_NULL|Packet], TypeStruct, Bin, Opts)
     TT = Opts#eopts.tt,
     case TT#typestree.type of
         ?LLSN_TYPE_UNDEFINED ->
-            Type1 = ?LLSN_TYPE_UNDEFINED_NULL - Type,
-            BinType = <<Type1/big-unsigned-integer>>,
-            BinTypeLen = 1,
-            TT = Opts#eopts.tt#typestree{type = Type};
-        _ ->
-            BinType = <<>>, BinTypeLen = 0,
-            TT = Opts#eopts.tt
-    end,
+            case Type of
+                {Type1, _} ->
+                    Type2 = ?LLSN_TYPE_UNDEFINED_NULL - Type1;
+                Type1 ->
+                    Type2 = ?LLSN_TYPE_UNDEFINED_NULL - Type
+            end,
 
-    TT1 = typesTree(next, TT),
-    % FIXME!!! call framing
-    encode_ext(Packet, Struct, Bin, Opts);
+            {Bin1, Opts1} = framing(Bin, Opts, <<Type1/big-unsigned-integer>>, 1),
+
+            TT1 = Opts1#eopts.tt#typestree{type = Type},
+            Opts2 = Opts1#eopts{tt = typesTree(next, TT1)},
+
+            encode_ext(Packet, Struct, Bin1, Opts2);
+        _ ->
+            TT1 = typesTree(next, TT),
+            encode_ext(Packet, Struct, Bin, Opts#eopts{tt = TT1})
+    end;
 
 encode_ext([?LLSN_NULL|Packet], TypeStruct, Bin, Opts) ->
+
     case TypeStruct of
-        [Type|Struct] ->
+        [_|Struct] ->
             pass;
-        Type ->
-            Struct = Type
+        Struct ->
+            pass
     end,
 
     {BinNullFlag, BinNullFlagSize, NullFlag} = encode_nullflag(Opts#eopts.nullflag),
@@ -279,6 +284,9 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
 
     case Opts#eopts.tt#typestree.type of
         ?LLSN_TYPE_UNDEFINED when is_tuple(Type) ->
+            % array and struct are presents as a tuple. for example, array of
+            % numbers looks like {?LLSN_TYPE_ARRAY, ?LLSN_TYPE_NUMBER} and
+            % for the struct it looks {?LLSN_TYPE_STRUCT, [?LLSN_TYPE_UNUMBER, ?LLSN_TYPE_STRING]}
             {Type1, _} = Type,
             BinType = <<Type1/big-unsigned-integer>>,
             BinTypeLen = 1,
@@ -322,7 +330,13 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
             encode_ext(Packet, Struct, Bin2, Opts2);
 
         ?LLSN_TYPE_STRING ->
-            {BinValue, BinValueLen, NOpts} = encode_STRING(Value, Opts);
+            {BinValue, BinValueLen, Opts1} = encode_STRING(Value, Opts),
+            TT1     = typesTree(next, TT),
+            Opts2   = Opts1#eopts{tt = TT1, nullflag = NullFlag},
+            Bin1    = <<BinNullFlag/binary, BinType/binary, BinValue/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + BinValueLen,
+            {Bin2, Opts3} = framing(Bin, Opts2, Bin1, Bin1Len),
+            encode_ext(Packet, Struct, Bin2, Opts3);
 
         ?LLSN_TYPE_BOOL ->
             {BinValue, BinValueLen} = encode_BOOL(Value),
@@ -334,7 +348,13 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
             encode_ext(Packet, Struct, Bin2, Opts2);
 
         ?LLSN_TYPE_BLOB ->
-            {BinValue, BinValueLen, NOpts} = encode_BLOB(Value, Opts);
+            {BinValue, BinValueLen, Opts1} = encode_BLOB(Value, Opts),
+            TT1     = typesTree(next, TT),
+            Opts2   = Opts1#eopts{tt = TT1, nullflag = NullFlag},
+            Bin1    = <<BinNullFlag/binary, BinType/binary, BinValue/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + BinValueLen,
+            {Bin2, Opts3} = framing(Bin, Opts2, Bin1, Bin1Len),
+            encode_ext(Packet, Struct, Bin2, Opts3);
 
         ?LLSN_TYPE_DATE ->
             {BinValue, BinValueLen} = encode_DATE(Value),
@@ -346,20 +366,45 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
             encode_ext(Packet, Struct, Bin2, Opts2);
 
         ?LLSN_TYPE_FILE ->
-            {BinValue, BinValueLen, NOpts} = encode_FILE(Value, Opts);
+            % {BinValue, BinValueLen, Opts1} = encode_FILE(Value, Opts);
+            pass;
 
         {?LLSN_TYPE_STRUCT, ValueStruct} ->
-            TT = Opts#eopts.tt,
-            TT1 = typesTree(child, TT);
+            StructList  = tuple_to_list(ValueStruct),
+            StructLen   = length(StructList),
+            TT1         = typesTree(child, TT#typestree{length = StructLen}),
+            {StructLenBin, StructLenBinLen} = encode_UNUMBER(StructLen),
+
+            if TT1#typestree.type == ?LLSN_TYPE_UNDEFINED ->
+                NullFlagNew = ?LLSN_NULL;
+            true ->
+                NullFlagNew = encode_nullflag_create(tuple_to_list(Value))
+            end,
+
+            Bin1    = <<BinNullFlag/binary, BinType/binary, StructLenBin/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen + StructLenBinLen,
+
+            Opts1 = Opts#eopts{stack = [{Packet, Struct, NullFlag}| Opts#eopts.stack],
+                                  tt = TT1,
+                            nullflag = NullFlagNew},
+
+            {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+
+            encode_ext(tuple_to_list(Value), StructList, Bin2, Opts2);
+
 
         {Array, ArrayOf} when Array == ?LLSN_TYPE_ARRAY; % array or array with null values
                                  Array == ?LLSN_TYPE_ARRAYN ->
-            ArrayLen = length(Value),
+            ArrayLen    = length(Value),
+            TT1         = typesTree(child, TT#typestree{length = ArrayLen}),
+            TT2         = TT1#typestree{next = self},
             {ArrayLenBin, ArrayLenBinLen} = encode_UNUMBER(ArrayLen),
-            TT1      = typesTree(child, TT#typestree{length = ArrayLen}),
-            TT2      = TT1#typestree{next = self},
 
-            NullFlagNew = encode_nullflag_create(Value),
+            if Array == ?LLSN_TYPE_ARRAYN ->
+                NullFlagNew = encode_nullflag_create(Value);
+            true ->
+                NullFlagNew = ?LLSN_NULL
+            end,
 
             Bin1    = <<BinNullFlag/binary, BinType/binary, ArrayLenBin/binary>>,
             Bin1Len = BinNullFlagSize + BinTypeLen + ArrayLenBinLen,
@@ -520,17 +565,16 @@ encode_POINTER(Struct, [C|Coord]) ->
 encode_STRING(Value, Opts) ->
     BinValue = unicode:characters_to_binary(Value, utf8),
     if byte_size(BinValue) > ?LLSN_TYPE_STRING_LIMIT ->
-        throw("The limit of string length is exceeded")
-    end,
+        throw("The limit of string length is exceeded");
+    true ->
+        encode_BLOB(BinValue, Opts)
+    end.
 
-    encode_BLOB(BinValue, Opts).
+encode_BLOB(Value, Opts) when byte_size(Value) > ?LLSN_TYPE_BLOB_LIMIT ->
+    throw("The limit of blob length is exceeded");
 
 encode_BLOB(Value, Opts) ->
     ValueSize = byte_size(Value),
-
-    if byte_size(ValueSize) > ?LLSN_TYPE_BLOB_LIMIT ->
-        throw("The limit of blob length is exceeded")
-    end,
 
     {ValueSizeBin, ValueSizeBinLen} = encode_UNUMBER(ValueSize),
 
