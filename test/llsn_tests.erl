@@ -59,6 +59,7 @@ llsn_1K_random_signed_NUMBER_test() ->
 
 llsn_random_unsigned_NUMBER(0) ->
     ok;
+
 llsn_random_unsigned_NUMBER(N) ->
     Num = llsn_gen:random_unsigned_number(),
     {BinNum, _} = llsn:encode_UNUMBER(Num),
@@ -109,15 +110,12 @@ llsn_encodeEtalonEncodeDecodeEtalon_NoThreshold_test() ->
     Etalon15    = element(15, Etalon),
     Etalon15_1  = Etalon15#llsn_file{origin = null},
     EtalonFixed  = setelement(15, Etalon, Etalon15_1),
-    
-    io:format("~w ~n", [Value]),
 
     Value15     = element(15, Value),
     Value15_1   = Value15#llsn_file{origin = null},
     ValueFixed  = setelement(15, Value, Value15_1),
 
-    ?assert(EtalonFixed =:= ValueFixed),
-    ok.
+    ?assert(EtalonFixed =:= ValueFixed).
 
 llsn_encodeComplexStruct(0) ->
     ok;
@@ -129,13 +127,12 @@ llsn_encodeComplexStruct(N) ->
 llsn_1K_encodeComplexStruct_test() ->
     llsn_encodeComplexStruct(1000).
 
-llsn_encodeComplexStruct_with_Framing_test() ->
-    ok.
+
 
 llsn_decodeComplexStruct_test() ->
     ValueBin = get_exampleMainValueEncoded(),
     Value = llsn:decode(ValueBin),
-    % we have to remove 'origin' from 'llsn_file' 
+    % we have to remove 'origin' from 'llsn_file'
     F0 = element(15, Value),
     F1 = F0#llsn_file{origin = null},
     Value1 = setelement(15, Value, F1),
@@ -163,6 +160,34 @@ llsn_decodeComplexStructSlowStream_test() ->
     MainValue1 = setelement(15, MainValue, FF1),
 
     ?assert(Value1 =:= MainValue1).
+
+llsn_decodeComplexStructSlowStreamNoThreshold_test() ->
+    Value0 = get_exampleMainValue(),
+    Declaration = get_exampleMainDeclaration(),
+    ValueBin    = llsn:encode(Value0,Declaration),
+    Value1 = slow_stream(ValueBin, null),
+    % we have to remove 'origin' from 'llsn_file'
+    F0 = element(15, Value0),
+    F0_1 = F0#llsn_file{origin = null},
+    Value0_1 = setelement(15, Value0, F0_1),
+
+    FF0 = element(15, Value1),
+    FF1 = FF0#llsn_file{origin = null},
+    Value1_1 = setelement(15, Value1, FF1),
+
+    ?assert(Value0_1 =:= Value1_1).
+
+llsn_decodeEtalonDecodeEncodeEtalon_test() ->
+    EtalonBin   = get_exampleMainValueEncoded(),
+    Value       = llsn:decode(EtalonBin),
+    Declaration = get_exampleMainDeclaration(),
+    ValueBin    = llsn:encode(Value, Declaration, 4),
+
+    ?assert(EtalonBin =:= ValueBin).
+
+
+llsn_encodeComplexStruct_with_Framing_test() ->
+    ok.
 
 llsn_decodeComplexStruct_with_Framing_test() ->
     ok.
