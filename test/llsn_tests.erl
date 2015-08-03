@@ -186,8 +186,29 @@ llsn_decodeEtalonDecodeEncodeEtalon_test() ->
     ?assert(EtalonBin =:= ValueBin).
 
 
+receive_frame(Bin) ->
+
+    receive
+        {frame, N, _Size, Frame, UserData } ->
+            ?assert(UserData =:= [userdata]),
+            receive_frame(<<Bin/binary,Frame/binary>>);
+
+        {done, N, _Size, Frame, UserData} ->
+            ?assert(UserData =:= [userdata]),
+            <<Bin/binary,Frame/binary>>
+
+    after 1000 -> ?assert("timeout")
+    end.
+
 llsn_encodeComplexStruct_with_Framing_test() ->
-    ok.
+    Value = get_exampleMainValue(),
+    Declaration = get_exampleMainDeclaration(),
+    ok    = llsn:encode(Value, Declaration, self(), 50, [userdata]),
+    ValueBin = receive_frame(<<>>),
+    ValueBinNoFrame   =  llsn:encode(Value, Declaration),
+    ?assert(ValueBin =:= ValueBinNoFrame).
+
+
 
 llsn_decodeComplexStruct_with_Framing_test() ->
     ok.

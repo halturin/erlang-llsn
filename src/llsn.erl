@@ -194,7 +194,8 @@ encode_ext([], Struct, Bin, Opts) when Opts#eopts.stack == [] ->
         [] ->
             % finished
             if is_pid(Opts#eopts.pid) ->
-                Opts#eopts.pid ! {done, Opts#eopts.frame, Opts#eopts.framesize, Bin, Opts#eopts.userdata};
+                Opts#eopts.pid ! {done, Opts#eopts.frame, Opts#eopts.framesize, Bin, Opts#eopts.userdata},
+                ok;
             true ->
                 Bin
             end;
