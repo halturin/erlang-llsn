@@ -617,13 +617,13 @@ encode_FILE(#llsn_file{name = FileName, origin = FileOrigin} = Value, Bin, Opts)
     FileNameBinSize = byte_size(FileNameBin),
     {FileNameBinSizeBin, FileNameBinSizeBinLen} = encode_UNUMBER(FileNameBinSize),
 
-    Opts1       = Opts#eopts{tail = lists:append(Opts#eopts.tail, [ {file, Value} ])},
     Bin1        = <<FileSizeBin/binary, FileNameBinSizeBin/binary, FileNameBin/binary>>,
     Bin1Len     = FileSizeBinLen + FileNameBinSizeBinLen + FileNameBinSize,
 
-    {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+    {Bin2, Opts1} = framing(Bin, Opts, Bin1, Bin1Len),
 
-    if FileSize > Opts#eopts.threshold, Opts#eopts.threshold > 0 ->
+    if FileSize > Opts1#eopts.threshold, Opts1#eopts.threshold > 0 ->
+        Opts2       = Opts1#eopts{tail = lists:append(Opts1#eopts.tail, [ {file, Value} ])},
         {Bin2, Opts2};
     true ->
         {ok, FD} = file:open(FileOrigin, [read, binary]),
@@ -633,7 +633,7 @@ encode_FILE(#llsn_file{name = FileName, origin = FileOrigin} = Value, Bin, Opts)
             fd       = FD
         },
 
-        encode_FILE(Value, Bin2, Opts2#eopts{chunk = Chunk})
+        encode_FILE(Value, Bin2, Opts1#eopts{chunk = Chunk})
     end;
 
 encode_FILE(Value, Bin, #eopts{chunk = Chunk} = Opts) ->
