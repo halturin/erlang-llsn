@@ -83,6 +83,39 @@ llsn_encodeComplexStruct_test() ->
     ?assert(Bin =:= ValueBin),
     ok.
 
+llsn_encodeEtalonEncodeDecodeEtalon_Threshold_test() ->
+    Etalon      = get_exampleMainValue(),
+    Declaration = get_exampleMainDeclaration(),
+    ValueBin    = llsn:encode(Etalon,Declaration,4),
+    Value       = llsn:decode(ValueBin),
+
+    Etalon15    = element(15, Etalon),
+    Etalon15_1  = Etalon15#llsn_file{origin = null},
+    EtalonFixed  = setelement(15, Etalon, Etalon15_1),
+
+    Value15     = element(15, Value),
+    Value15_1   = Value15#llsn_file{origin = null},
+    ValueFixed  = setelement(15, Value, Value15_1),
+
+    ?assert(EtalonFixed =:= ValueFixed),
+    ok.
+
+llsn_encodeEtalonEncodeDecodeEtalon_NoThreshold_test() ->
+    Etalon      = get_exampleMainValue(),
+    Declaration = get_exampleMainDeclaration(),
+    ValueBin    = llsn:encode(Etalon,Declaration),
+    Value       = llsn:decode(ValueBin),
+
+    Etalon15    = element(15, Etalon),
+    Etalon15_1  = Etalon15#llsn_file{origin = null},
+    EtalonFixed  = setelement(15, Etalon, Etalon15_1),
+
+    Value15     = element(15, Value),
+    Value15_1   = Value15#llsn_file{origin = null},
+    ValueFixed  = setelement(15, Value, Value15_1),
+
+    ?assert(EtalonFixed =:= ValueFixed),
+    ok.
 
 llsn_encodeComplexStruct(0) ->
     ok;
@@ -102,7 +135,6 @@ llsn_decodeComplexStruct_test() ->
     Value = llsn:decode(ValueBin),
     % we have to remove 'origin' from 'llsn_file' 
     F0 = element(15, Value),
-    io:format("~p ~n", [F0]),
     F1 = F0#llsn_file{origin = null},
     Value1 = setelement(15, Value, F1),
 
