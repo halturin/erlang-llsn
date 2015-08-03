@@ -239,9 +239,9 @@ encode_ext([?LLSN_NULL|Packet], TypeStruct, Bin, Opts)
                     Type2 = ?LLSN_TYPE_UNDEFINED_NULL - Type
             end,
 
-            {Bin1, Opts1} = framing(Bin, Opts, <<Type1/big-unsigned-integer>>, 1),
+            {Bin1, Opts1} = framing(Bin, Opts, <<Type2/big-unsigned-integer>>, 1),
 
-            TT1 = Opts1#eopts.tt#typestree{type = Type},
+            TT1 = Opts1#eopts.tt#typestree{type = Type1},
             Opts2 = Opts1#eopts{tt = typesTree(next, TT1)},
 
             encode_ext(Packet, Struct, Bin1, Opts2);
@@ -372,8 +372,16 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
         {?LLSN_TYPE_STRUCT, ValueStruct} ->
             StructList  = tuple_to_list(ValueStruct),
             StructLen   = length(StructList),
-            TT1         = typesTree(child, TT#typestree{length = StructLen}),
-            {StructLenBin, StructLenBinLen} = encode_UNUMBER(StructLen),
+
+            case TT#typestree.length of
+                ?LLSN_NULL ->
+                    TT1 = typesTree(child, TT#typestree{length = StructLen}),
+                    {StructLenBin, StructLenBinLen} = encode_UNUMBER(StructLen);
+                _ ->
+                    % the length of struct is already encoded early
+                    TT1 = typesTree(child, TT),
+                    {StructLenBin, StructLenBinLen} = {<<>>, 0}
+            end,
 
             if TT1#typestree.type == ?LLSN_TYPE_UNDEFINED ->
                 NullFlagNew = ?LLSN_NULL;
