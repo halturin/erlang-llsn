@@ -109,6 +109,8 @@ llsn_encodeEtalonEncodeDecodeEtalon_NoThreshold_test() ->
     Etalon15    = element(15, Etalon),
     Etalon15_1  = Etalon15#llsn_file{origin = null},
     EtalonFixed  = setelement(15, Etalon, Etalon15_1),
+    
+    io:format("~w ~n", [Value]),
 
     Value15     = element(15, Value),
     Value15_1   = Value15#llsn_file{origin = null},

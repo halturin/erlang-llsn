@@ -441,12 +441,6 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
     end.
 
 
-
-
-
-
-
-
 encode_NUMBER(Value) when 0 > Value ->
     NValue = Value * -1,
     encode_number(Value, NValue);
@@ -1195,9 +1189,7 @@ typesTree(parent, Current) ->
     typesTree(parent, T#typestree{next   = ParentNext,
                                   parent = Current#typestree.parent}).
 
-% checking for null flags
-decode_nullflag(<<>>, _N, _Opts) ->
-    parted;
+
 
 decode_nullflag(Data, _N, Opts) when Opts#dopts.tt#typestree.parent == ?LLSN_NULL ->
     {false, Data, Opts};
@@ -1206,19 +1198,24 @@ decode_nullflag(Data, N, Opts) when Opts#dopts.nullflag /= ?LLSN_NULL ->
     T   = Opts#dopts.tt,
     Parent = T#typestree.parent,
     Pos = (8 - ((Parent#typestree.length - N) rem 8)),
-    if Pos == 8 ->
-        <<NF:8/big-unsigned-integer, Data1/binary>>  = Data,
-        Opts1   = Opts#dopts{nullflag = NF};
+    case Data of
+        <<NF:8/big-unsigned-integer, Data1/binary>> when Pos == 8 ->
+            Opts1   = Opts#dopts{nullflag = NF},
+            if NF band (1 bsl (Pos - 1)) == 0 ->
+                {false, Data1, Opts1};
+            true ->
+                {true, Data1, Opts1}
+            end;
 
-    true ->
-        Data1   = Data,
-        Opts1   = Opts
-    end,
+        <<>>  when Pos == 8 ->
+            parted;
 
-    if Opts1#dopts.nullflag band (1 bsl (Pos - 1)) == 0 ->
-        {false, Data1, Opts1};
-    true ->
-        {true, Data1, Opts1}
+        _ ->
+            if Opts#dopts.nullflag band (1 bsl (Pos - 1)) == 0 ->
+                {false, Data, Opts};
+            true ->
+                {true, Data, Opts}
+            end
     end;
 
 decode_nullflag(Data, _N, Opts) ->
