@@ -76,12 +76,24 @@ llsn_1K_random_FLOAT_test() ->
     ok.
 
 llsn_encodeComplexStruct_test() ->
-    % Value = get_exampleMainValue(),
-    % Declaration = get_exampleMainDeclaration(),
-    % ValueBin = get_exampleMainValueEncoded(),
-    % Bin = llsn:encode(Value,Declaration),
-    % ?assert(Bin =:= ValueBin).
+    Value = get_exampleMainValue(),
+    Declaration = get_exampleMainDeclaration(),
+    ValueBin = get_exampleMainValueEncoded(),
+    Bin = llsn:encode(Value,Declaration,4),
+    ?assert(Bin =:= ValueBin),
     ok.
+
+
+llsn_encodeComplexStruct(0) ->
+    ok;
+
+llsn_encodeComplexStruct(N) ->
+    ok = llsn_encodeComplexStruct_test(),
+    llsn_encodeComplexStruct(N-1).
+
+llsn_1K_encodeComplexStruct_test() ->
+    llsn_encodeComplexStruct(1000).
+
 llsn_encodeComplexStruct_with_Framing_test() ->
     ok.
 
@@ -185,7 +197,7 @@ get_exampleMainDeclaration() ->
         {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}},
         {?LLSN_TYPE_ARRAY, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}},
         {?LLSN_TYPE_ARRAY, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}},
-        {?LLSN_TYPE_ARRAY, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}},
+        {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}},
         {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}}},
         ?LLSN_TYPE_BLOB,
         ?LLSN_TYPE_FILE,

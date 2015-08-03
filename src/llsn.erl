@@ -212,7 +212,6 @@ encode_ext([], Struct, Bin, Opts) when Opts#eopts.stack == [] ->
 
 % stack processing...
 encode_ext([], _, Bin, Opts) ->
-    ?DBG("########### Pop from Stack"),
     [{Packet, Struct, NullFlag} | Stack] = Opts#eopts.stack,
     TT    = typesTree(parent, Opts#eopts.tt),
     NOpts = Opts#eopts{stack = Stack, nullflag = NullFlag,
