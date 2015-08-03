@@ -36,9 +36,9 @@
 -record(typestree, {
     type        :: non_neg_integer(),
     next,       % next 'typestree' item
-    prev,       % 
-    child,      % 
-    parent,     % 
+    prev,       %
+    child,      %
+    parent,     %
     length      :: non_neg_integer() % length of array/struct
 }).
 
@@ -55,10 +55,15 @@
     stack       :: list(), % needs for incapsulated structs/arrays
     struct      :: tuple(), % needs for POINTER type processing
     nullflag    :: list(),
+    chunk       :: tuple(), % file_chunk struct. for encoding/decoding file purposes
     tt          % tree of the types
 }).
 
-
+% file chunk.
+-record(chunkFile, {fileSize :: non_neg_integer(),
+                    f, % llsn_file
+                    fd % file descriptor
+               }).
 
 %% =============================================================================
 %% Encoding
@@ -73,6 +78,7 @@ encode(Packet, Struct) when is_tuple(Packet) and is_tuple(Struct) ->
         tail            = [],
         stack           = [],
         nullflag        = ?LLSN_NULL,
+        chunk           = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
@@ -89,6 +95,7 @@ encode(Packet, Struct, PID) when is_pid(PID)
         stack           = [],
         pid             = PID,
         nullflag        = ?LLSN_NULL,
+        chunk           = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options);
@@ -105,6 +112,7 @@ encode(Packet, Struct, Threshold) when is_integer(Threshold)
         tail            = [],
         stack           = [],
         nullflag        = ?LLSN_NULL,
+        chunk           = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
@@ -122,6 +130,7 @@ encode(Packet, Struct, PID, UserData) when is_pid(PID)
         pid             = PID,
         userdata        = UserData,
         nullflag        = ?LLSN_NULL,
+        chunk           = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options);
@@ -139,6 +148,7 @@ encode(Packet, Struct, PID, FrameLimit) when is_pid(PID)
         stack           = [],
         pid             = PID,
         nullflag        = ?LLSN_NULL,
+        chunk           = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
@@ -157,6 +167,7 @@ encode(Packet, Struct, PID, FrameLimit, UserData) when is_pid(PID)
         pid             = PID,
         userdata        = UserData,
         nullflag        = ?LLSN_NULL,
+        chunk           = ?LLSN_NULL,
         tt              = typesTree(new)
     },
     encode_ext(Packet, Struct, Options).
@@ -187,17 +198,15 @@ encode_ext([], Struct, Bin, Opts) when Opts#eopts.stack == [] ->
             true ->
                 Bin
             end;
-        [{file, #llsn_file{origin = File} } | Tail] ->
-            ?DBG("Tail. File encoding"),
-            % FIXME FIXME FIXME FIXME FIXME
-            {Bin1, Opts1} = framing(Bin, Opts, File, byte_size(File)),
-            Opts2 = Opts1#eopts{tail = Tail},
-            encode_ext([], Struct, Bin1, Opts2);
+        [{file, #llsn_file{origin = FileOrigin} = File } | Tail] ->
+            {ok, FD}        = file:open(FileOrigin, [read, binary]),
+            Chunk           = #chunkFile{fd = FD},
+            {Bin1, Opts1}   = encode_FILE(File, Bin, Opts#eopts{chunk = Chunk, tail = Tail}),
+            encode_ext([], Struct, Bin1, Opts1);
 
         [{data, Data} | Tail] ->
-            ?DBG("Tail. String/Blob encoding"),
-            {Bin1, Opts1} = framing(Bin, Opts, Data, byte_size(Data)),
-            Opts2 = Opts1#eopts{tail = Tail},
+            {Bin1, Opts1}   = framing(Bin, Opts, Data, byte_size(Data)),
+            Opts2           = Opts1#eopts{tail = Tail},
             encode_ext([], Struct, Bin1, Opts2)
     end;
 
@@ -366,8 +375,13 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
             encode_ext(Packet, Struct, Bin2, Opts2);
 
         ?LLSN_TYPE_FILE ->
-            % {BinValue, BinValueLen, Opts1} = encode_FILE(Value, Opts);
-            pass;
+            TT1     = typesTree(next, TT),
+            Opts1   = Opts#eopts{tt = TT1, nullflag = NullFlag},
+            Bin1    = <<BinNullFlag/binary, BinType/binary>>,
+            Bin1Len = BinNullFlagSize + BinTypeLen,
+            {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+            {Bin3, Opts3} = encode_FILE(Value, Bin2, Opts2),
+            encode_ext(Packet, Struct, Bin3, Opts3);
 
         {?LLSN_TYPE_STRUCT, ValueStruct} ->
             StructList  = tuple_to_list(ValueStruct),
@@ -536,7 +550,7 @@ encode_FLOAT(Value) ->
 
 encode_DATE({{Year, Month, Day},
              {Hour, Min, Sec, MSec},
-             {OffsetHour, OffsetMin}} = Date) ->
+             {OffsetHour, OffsetMin}}) ->
     { <<Year:16/big-integer,
         Month:4/big-unsigned-integer,
         Day:5/big-unsigned-integer,
@@ -578,7 +592,7 @@ encode_STRING(Value, Opts) ->
         encode_BLOB(BinValue, Opts)
     end.
 
-encode_BLOB(Value, Opts) when byte_size(Value) > ?LLSN_TYPE_BLOB_LIMIT ->
+encode_BLOB(Value, _) when byte_size(Value) > ?LLSN_TYPE_BLOB_LIMIT ->
     throw("The limit of blob length is exceeded");
 
 encode_BLOB(Value, Opts) ->
@@ -587,17 +601,54 @@ encode_BLOB(Value, Opts) ->
     {ValueSizeBin, ValueSizeBinLen} = encode_UNUMBER(ValueSize),
 
     if ValueSize > Opts#eopts.threshold, Opts#eopts.threshold > 0 ->
-            Opts1 = Opts#eopts{tail = lists:append(Opts#eopts.tail, [ {flat, Value} ])},
+            Opts1 = Opts#eopts{tail = lists:append(Opts#eopts.tail, [ {data, Value} ])},
             {<<ValueSizeBin/binary>>, ValueSizeBinLen, Opts1};
-
-        true ->
+    true ->
             {<<ValueSizeBin/binary, Value/binary>>,
                 ValueSizeBinLen + ValueSize, Opts}
     end.
 
-encode_FILE(File, Opts) ->
-    pass.
+encode_FILE(#llsn_file{name = FileName, origin = FileOrigin} = Value, Bin, Opts)
+                        when Opts#eopts.chunk == ?LLSN_NULL ->
 
+    FileSize    = filelib:file_size(FileOrigin),
+    {FileSizeBin, FileSizeBinLen} = encode_UNUMBER(FileSize),
+
+    FileNameBin     = unicode:characters_to_binary(FileName, utf8),
+    FileNameBinSize = byte_size(FileNameBin),
+    {FileNameBinSizeBin, FileNameBinSizeBinLen} = encode_UNUMBER(FileNameBinSize),
+
+    Opts1       = Opts#eopts{tail = lists:append(Opts#eopts.tail, [ {file, Value} ])},
+    Bin1        = <<FileSizeBin/binary, FileNameBinSizeBin/binary, FileNameBin/binary>>,
+    Bin1Len     = FileSizeBinLen + FileNameBinSizeBinLen + FileNameBinSize,
+
+    {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
+
+    if FileSize > Opts#eopts.threshold, Opts#eopts.threshold > 0 ->
+        {Bin2, Opts2};
+    true ->
+        {ok, FD} = file:open(FileOrigin, [read, binary]),
+
+        Chunk = #chunkFile{
+            fileSize = FileSize,
+            fd       = FD
+        },
+
+        encode_FILE(Value, Bin2, Opts2#eopts{chunk = Chunk})
+    end;
+
+encode_FILE(Value, Bin, #eopts{chunk = Chunk} = Opts) ->
+    case file:read(Chunk#chunkFile.fd, ?LLSN_DEFAULT_BUFFER_SIZE) of
+        {ok, Data} ->
+            DataSize        = byte_size(Data),
+            {Bin1, Opts1}   = framing(Bin, Opts, Data, DataSize),
+            encode_FILE(Value, Bin1, Opts1);
+        eof ->
+            file:close(Chunk#chunkFile.fd),
+            {Bin, Opts};
+        {error, Reason} ->
+            throw("Error file reading: " ++ Reason)
+    end.
 
 %% =============================================================================
 %% Decoding
@@ -632,7 +683,7 @@ decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
     end;
 
 % unsupported version of LLSN
-decode(<<V:4/big-unsigned-integer, Threshold:12/big-unsigned-integer,
+decode(<<V:4/big-unsigned-integer, _:12/big-unsigned-integer,
                 Data/binary>>) when V > 1 ->
     {unsupported, Data};
 
@@ -958,17 +1009,6 @@ decode_BLOB(L, Data, Opts) ->
                     end
             end
     end.
-
-%% =============================================================================
-%% Files
-%% =============================================================================
-% FIXME
-
-% file chunk
--record(chunkFile, {fileSize :: non_neg_integer(),
-                    f, % llsn_file
-                    fd % file descriptor
-               }).
 
 decode_FILE(L, Data, Opts) when Opts#dopts.chunk == null ->
     case decode_UNUMBER(Data) of

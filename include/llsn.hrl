@@ -55,6 +55,7 @@
 -define(LLSN_DEFAULT_FRAME_LIMIT,       49152). % 48K
 -define(LLSN_TYPE_STRING_LIMIT,         10485760). % 1MB
 -define(LLSN_TYPE_BLOB_LIMIT,           4294967296). % 4GB
+-define(LLSN_DEFAULT_BUFFER_SIZE,      10). %104857600). % 10MB. uses for file reading in encoding process
 
 % file decoding temporary directory
 -define(LLSN_DEFAULT_DIR,               "/tmp/").
