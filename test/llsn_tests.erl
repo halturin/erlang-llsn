@@ -209,11 +209,6 @@ llsn_encodeComplexStruct_with_Framing_test() ->
     ?assert(Bin =:= BinNoFrame).
 
 
-
-llsn_decodeComplexStruct_with_Framing_test() ->
-    ok.
-
-
 %% =============================================================================
 %% helpers
 %% =============================================================================
@@ -273,11 +268,11 @@ get_exampleMainDeclaration() ->
         ?LLSN_TYPE_STRING,
         ?LLSN_TYPE_DATE,
         ?LLSN_TYPE_DATE,
-        {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}},
-        {?LLSN_TYPE_ARRAY, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}},
-        {?LLSN_TYPE_ARRAY, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}},
-        {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}},
-        {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_STRUCT, {?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }}}}},
+        {?LLSN_TYPE_STRUCT, [?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8]}]},
+        {?LLSN_TYPE_ARRAY, {?LLSN_TYPE_STRUCT, [?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }]}},
+        {?LLSN_TYPE_ARRAY, {?LLSN_TYPE_STRUCT, [?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }]}},
+        {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_STRUCT, [?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }]}},
+        {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_ARRAYN, {?LLSN_TYPE_STRUCT, [?LLSN_TYPE_NUMBER, {?LLSN_TYPE_POINTER, [8] }]} }},
         ?LLSN_TYPE_BLOB,
         ?LLSN_TYPE_FILE,
         ?LLSN_TYPE_FILE,

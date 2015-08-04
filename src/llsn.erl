@@ -384,13 +384,12 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
             encode_ext(Packet, Struct, Bin3, Opts3);
 
         {?LLSN_TYPE_STRUCT, ValueStruct} ->
-            StructList  = tuple_to_list(ValueStruct),
-            StructLen   = length(StructList),
+            ValueStructLen   = length(ValueStruct),
 
             case TT#typestree.length of
                 ?LLSN_NULL ->
-                    TT1 = typesTree(child, TT#typestree{length = StructLen}),
-                    {StructLenBin, StructLenBinLen} = encode_UNUMBER(StructLen);
+                    TT1 = typesTree(child, TT#typestree{length = ValueStructLen}),
+                    {StructLenBin, StructLenBinLen} = encode_UNUMBER(ValueStructLen);
                 _ ->
                     % the length of struct is already encoded early
                     TT1 = typesTree(child, TT),
@@ -412,7 +411,7 @@ encode_ext([Value|Packet], TypeStruct, Bin, Opts) ->
 
             {Bin2, Opts2} = framing(Bin, Opts1, Bin1, Bin1Len),
 
-            encode_ext(tuple_to_list(Value), StructList, Bin2, Opts2);
+            encode_ext(tuple_to_list(Value), ValueStruct, Bin2, Opts2);
 
 
         {Array, ArrayOf} when Array == ?LLSN_TYPE_ARRAY; % array or array with null values
