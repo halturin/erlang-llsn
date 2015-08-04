@@ -1230,20 +1230,14 @@ tail_getxy(N, Opts, XY) ->
     Opts1 = Opts#dopts{stack = StackT},
     tail_getxy(length(StackValue) + 1 ,Opts1, [N | XY]).
 
-% tail_replacexy([X|Y], Value, NewElement) when Y == [], is_tuple(Value) ->
-%     setelement(X, Value, NewElement);
+tail_replacexy([], _Value, NewElement) ->
+    NewElement;
 
-% tail_replacexy([X|Y], Value, NewElement) when Y == [], is_list(Value) ->
-%     setelement_l(X, Value, NewElement);
+tail_replacexy([X|Y], Value, NewElement) when is_tuple(Value) ->
+    setelement(X, Value, tail_replacexy(Y,element(X,Value), NewElement));
 
-% tail_replacexy([X|Y], Value, NewElement) ->
-%     [H|T] = Value,
-%     [NewElement|T].
-
-tail_replacexy([X,Y], Value, NewElement) ->
-    tail_replacexy([X-1,Y], Value)
-
-
+tail_replacexy([X|Y], Value, NewElement) when is_list(Value)->
+    setelement_l(X, Value, tail_replacexy(Y,lists:nth(X,Value), NewElement)).
 
 setelement_l(1, [_|Rest], New) -> [New|Rest];
 setelement_l(I, [E|Rest], New) -> [E|setelement_l(I-1, Rest, New)].
