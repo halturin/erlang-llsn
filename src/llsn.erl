@@ -481,7 +481,7 @@ encode_number(Value, NValue) when NValue band 16#7fffffffffffff == NValue ->
     { <<16#fe:8/big-unsigned-integer,Value:56/big-signed-integer>>, 8 };
 
 % def
-encode_number(Value, NValue) ->
+encode_number(Value, _) ->
     { <<16#ff:8/big-unsigned-integer,Value:64/big-signed-integer>>, 9 }.
 
 % 2^7 - 1
