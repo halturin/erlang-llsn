@@ -26,7 +26,7 @@
 
 -export([decode/1, decode/3]).
 
--export([decode_NUMBER/1, decode_UNUMBER/1, encode_POINTER/2]).
+-export([decode_NUMBER/1, decode_UNUMBER/1, tail_replacexy/3]).
 -export ([decode_DATE/1, encode_DATE/1]).
 
 
@@ -1230,16 +1230,20 @@ tail_getxy(N, Opts, XY) ->
     Opts1 = Opts#dopts{stack = StackT},
     tail_getxy(length(StackValue) + 1 ,Opts1, [N | XY]).
 
-tail_replacexy([X|Y], Value, NewElement) when Y == [], is_tuple(Value) ->
-    setelement(X, Value, NewElement);
+% tail_replacexy([X|Y], Value, NewElement) when Y == [], is_tuple(Value) ->
+%     setelement(X, Value, NewElement);
 
-tail_replacexy([X|Y], Value, NewElement) when Y == [], is_list(Value) ->
-    setelement_l(X, Value, NewElement);
+% tail_replacexy([X|Y], Value, NewElement) when Y == [], is_list(Value) ->
+%     setelement_l(X, Value, NewElement);
+
+% tail_replacexy([X|Y], Value, NewElement) ->
+%     [H|T] = Value,
+%     [NewElement|T].
+
+tail_replacexy([X,Y], Value, NewElement) ->
+    tail_replacexy([X-1,Y], Value)
 
 
-tail_replacexy([X|Y], Value, NewElement) ->
-    [H|T] = Value,
-    [NewElement|T].
 
 setelement_l(1, [_|Rest], New) -> [New|Rest];
 setelement_l(I, [E|Rest], New) -> [E|setelement_l(I-1, Rest, New)].

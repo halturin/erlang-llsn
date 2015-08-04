@@ -101,5 +101,6 @@
 
 -define(LOG(Format),                lager:log(info, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE])).
 -define(LOG(Format, Data),          lager:log(info, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE | Data])).
+
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

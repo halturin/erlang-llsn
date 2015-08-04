@@ -215,7 +215,6 @@ gen(Name, Struct) ->
     % создаем каталог для сгенерированных файлов
     WD = ?LLSN_GEN_FILE_FOLDER ++ "/" ++ Name ++ "/",
     ok = filelib:ensure_dir(WD),
-    ?DBG("Struct: ~p", [Struct]),
     Opts = #gopts{folder = WD, struct = Struct, stack = [], etype = ?LLSN_TYPE_STRUCT},
     random_packet(tuple_to_list(Struct), [], Opts).
 
