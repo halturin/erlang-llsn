@@ -17,49 +17,48 @@
 %% author Taras Halturin <halturin@allyst.com>
 
 
--define(LLSN_TYPE_UNDEFINED,    0).
--define(LLSN_TYPE_NUMBER,       1).
--define(LLSN_TYPE_FLOAT,        2).
--define(LLSN_TYPE_STRING,       3).
--define(LLSN_TYPE_BLOB,         4).
--define(LLSN_TYPE_FILE,         5).
--define(LLSN_TYPE_DATE,         6).
--define(LLSN_TYPE_BOOL,         7).
--define(LLSN_TYPE_STRUCT,       8).
--define(LLSN_TYPE_ARRAY,        9).
+-define(LLSN_TYPE_UNDEFINED,        0).
+-define(LLSN_TYPE_NUMBER,           1).
+-define(LLSN_TYPE_FLOAT,            2).
+-define(LLSN_TYPE_STRING,           3).
+-define(LLSN_TYPE_BLOB,             4).
+-define(LLSN_TYPE_FILE,             5).
+-define(LLSN_TYPE_DATE,             6).
+-define(LLSN_TYPE_BOOL,             7).
+-define(LLSN_TYPE_STRUCT,           8).
+-define(LLSN_TYPE_ARRAY,            9).
 
 
--define(LLSN_TYPE_ARRAYN,      10).
--define(LLSN_TYPE_POINTER,     11).
--define(LLSN_TYPE_UNUMBER,     12).
+-define(LLSN_TYPE_ARRAYN,           10).
+-define(LLSN_TYPE_POINTER,          11).
+-define(LLSN_TYPE_UNUMBER,          12).
 
--define(LLSN_TYPE_UNDEFINED_NULL,    255).
--define(LLSN_TYPE_NUMBER_NULL,       254).
--define(LLSN_TYPE_FLOAT_NULL,        253).
--define(LLSN_TYPE_STRING_NULL,       252).
--define(LLSN_TYPE_BLOB_NULL,         251).
--define(LLSN_TYPE_FILE_NULL,         250).
--define(LLSN_TYPE_DATE_NULL,         249).
--define(LLSN_TYPE_BOOL_NULL,         248).
--define(LLSN_TYPE_STRUCT_NULL,       247).
--define(LLSN_TYPE_ARRAY_NULL,        246).
--define(LLSN_TYPE_ARRAYN_NULL,       245).
--define(LLSN_TYPE_POINTER_NULL,      244).
--define(LLSN_TYPE_UNUMBER_NULL,      243).
-
+-define(LLSN_TYPE_UNDEFINED_NULL,   255).
+-define(LLSN_TYPE_NUMBER_NULL,      254).
+-define(LLSN_TYPE_FLOAT_NULL,       253).
+-define(LLSN_TYPE_STRING_NULL,      252).
+-define(LLSN_TYPE_BLOB_NULL,        251).
+-define(LLSN_TYPE_FILE_NULL,        250).
+-define(LLSN_TYPE_DATE_NULL,        249).
+-define(LLSN_TYPE_BOOL_NULL,        248).
+-define(LLSN_TYPE_STRUCT_NULL,      247).
+-define(LLSN_TYPE_ARRAY_NULL,       246).
+-define(LLSN_TYPE_ARRAYN_NULL,      245).
+-define(LLSN_TYPE_POINTER_NULL,     244).
+-define(LLSN_TYPE_UNUMBER_NULL,     243).
 -define(LLSN_NULL_TYPES, 128).
 
 
 -define(LLSN_NULL, null).
--define(LLSN_DEFAULT_THRESHOLD,         0). % value range: 0..4096
--define(LLSN_DEFAULT_FRAME_LIMIT,       49152). % 48K
--define(LLSN_TYPE_STRING_LIMIT,         10485760). % 1MB
--define(LLSN_TYPE_BLOB_LIMIT,           4294967296). % 4GB
--define(LLSN_DEFAULT_BUFFER_SIZE,      10). %104857600). % 10MB. uses for file reading in encoding process
+-define(LLSN_DEFAULT_THRESHOLD,     0). % value range: 0..4096
+-define(LLSN_DEFAULT_FRAME_LIMIT,   49152). % 48K
+-define(LLSN_TYPE_STRING_LIMIT,     10485760). % 1MB
+-define(LLSN_TYPE_BLOB_LIMIT,       4294967296). % 4GB
+-define(LLSN_DEFAULT_BUFFER_SIZE,   104857600). % 10MB. uses for file reading in encoding process
 
 % file decoding temporary directory
--define(LLSN_DEFAULT_DIR,               "/tmp/").
--define(LLSN_DEFAULT_FILEPREFIX,        "llsn").
+-define(LLSN_DEFAULT_DIR,           "/tmp/").
+-define(LLSN_DEFAULT_FILEPREFIX,    "llsn").
 
 
 -record(llsn_date_d, {
