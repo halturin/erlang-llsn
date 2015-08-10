@@ -215,7 +215,7 @@ llsn_encodeComplexStruct_with_Framing_test() ->
 
     ?assert(Bin =:= BinNoFrame).
 
-llsn_1K_GenRandomComplex(0, Threshold) ->
+llsn_1K_GenRandomComplex(0, _Threshold) ->
     ok;
 
 llsn_1K_GenRandomComplex(N, Threshold) ->
