@@ -57,5 +57,5 @@ test: compile
 	@echo "Done."
 
 dialyze:
-	@$(DIALYZER) -n -I $(INCLUDE_DIR) --src $(SRC_DIR)/*.erl
+	@$(DIALYZER) -n -I $(INCLUDE_DIR) --src $(SRC_DIR)/llsn.erl
 	@echo "Done."

@@ -45,12 +45,11 @@
     prev,       %
     child,      %
     parent,     %
-    length      :: non_neg_integer() % length of array/struct
+    length      :: ?LLSN_NULL | non_neg_integer() % length of array/struct
 }).
 
 % encode options
 -record(eopts, {
-
     threshold   :: non_neg_integer(), % threshold for the huge data (string, blob, file).
     pid         :: pid(), % send frames of the encoded data to the PID
     frame       :: non_neg_integer(), % frame number
@@ -60,8 +59,8 @@
     tail        :: list(), % tail packed items exceeds the 'threshold'
     stack       :: list(), % needs for incapsulated structs/arrays
     struct      :: tuple(), % needs for POINTER type processing
-    nullflag    :: list(),
-    chunk       :: tuple(), % file_chunk struct. for encoding/decoding file purposes
+    nullflag    :: ?LLSN_NULL | list(),
+    chunk       :: ?LLSN_NULL | tuple(), % file_chunk struct. for encoding/decoding file purposes
     tt          % tree of the types
 }).
 
@@ -1282,7 +1281,6 @@ encode_nullflag(?LLSN_NULL) ->
 
 encode_nullflag({FlagList, N}) ->
     {<<>>, 0, {FlagList, N + 1}}.
-
 
 encode_nullflag_create(ValueList) ->
     {ReversedNullFlags, _} = lists:foldl(
