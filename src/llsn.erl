@@ -849,8 +849,8 @@ decode_ext(Value, Data, N, Opts) ->
 
                 ?LLSN_TYPE_FILE ->
                     case decode_FILE(length(Value)+1, Data2, Opts2) of
-                        {parted, _, _} ->
-                            {parted, {Value, Data2, N, Opts2}};
+                        {parted, Data3, Opts3} ->
+                            {parted, {Value, Data3, N, Opts3}};
                         {tail, Data3, Opts3} ->
                             % FIXME. tail processing
                             decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
