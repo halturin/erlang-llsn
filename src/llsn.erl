@@ -32,7 +32,7 @@
 
 -export([decode/1, decode/3]).
 
--export([decode_NUMBER/1, decode_UNUMBER/1, tail_replacexy/3]).
+-export([decode_NUMBER/1, decode_UNUMBER/1]).
 -export ([decode_DATE/1, encode_DATE/1]).
 
 
@@ -814,7 +814,6 @@ decode_ext(Value, Data, N, Opts) ->
                         {parted, _, _} ->
                             {parted, {Value, Data, N, Opts}};
                         {tail, Data3, Opts3} ->
-                            % FIXME. tail processing
                             decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
                         {NValue, Data3, Opts3} ->
                             decode_ext([NValue|Value], Data3, N-1, Opts3#dopts{tt = TT})
@@ -841,7 +840,6 @@ decode_ext(Value, Data, N, Opts) ->
                         {parted, _, _} ->
                             {parted, {Value, Data, N, Opts}};
                         {tail, Data3, Opts3} ->
-                            % FIXME. tail processing
                             decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
                         {NValue, Data3, Opts3} ->
                             decode_ext([NValue|Value], Data3, N-1, Opts3#dopts{tt = TT})
@@ -852,7 +850,6 @@ decode_ext(Value, Data, N, Opts) ->
                         {parted, Data3, Opts3} ->
                             {parted, {Value, Data3, N, Opts3}};
                         {tail, Data3, Opts3} ->
-                            % FIXME. tail processing
                             decode_ext([tail|Value], Data3, N-1, Opts3#dopts{tt = TT});
                         {NValue, Data3, Opts3} ->
                             decode_ext([NValue|Value], Data3, N-1, Opts3#dopts{tt = TT})
