@@ -1017,7 +1017,7 @@ decode_FILE(L, Data, Opts) when Opts#dopts.chunk == null ->
                     case DataTail1 of
                         <<FileNameBin:FileNameSize/binary-unit:8, DataTail2/binary>> ->
                             TmpFileName = lists:flatten(io_lib:format(?LLSN_DEFAULT_FILEPREFIX"-~p.~p.~p",
-                                                                      tuple_to_list(now()))),
+                                                                      tuple_to_list(erlang:phash2(make_ref())))),
                             TmpFile     = Opts#dopts.dir ++ TmpFileName,
                             FileName    = unicode:characters_to_list(FileNameBin, utf8),
 
