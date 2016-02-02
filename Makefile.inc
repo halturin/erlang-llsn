@@ -1,7 +1,3 @@
-ifndef VERBOSE
-MAKEFLAGS += --no-print-directory
-endif
-
 ERL         ?= erl +A 4 +K true
 REBAR       ?= ./rebar
 DIALYZER    ?= dialyzer
@@ -9,10 +5,9 @@ DIALYZER    ?= dialyzer
 INCLUDE_DIR := include
 SRC_DIR     := src
 
-ARCH = $(shell uname -m)
-PLAT = $(shell uname -s)
-TAG  = ${ARCH}.${PLAT}
-BB   = ../basho_bench
+TEST_APPS   := $(a)
+TEST_SUITES := $(s)
+TEST_TESTS  := $(t)
 
 .PHONY: all
 all: deps compile-all
@@ -35,10 +30,14 @@ compile:
 	@$(REBAR) compile skip_deps=true
 	@echo "Done."
 
+debug:
+	@echo "[ $(APP_NAME): Compile project code with DEBUG option... ]"
+	@$(REBAR) compile skip_deps=true -Ddebug
+	@echo "Done."
+
 clean:
 	@echo "[ $(APP_NAME): Clean only project bytecode... ]"
 	@$(REBAR) clean skip_deps=true
-	rm -rf ebin log .rebar
 	@echo "Done."
 
 distclean: clean
@@ -53,9 +52,9 @@ docs:
 
 test: compile
 	@echo "[ $(APP_NAME): Test the project... ]"
-	@$(REBAR) eunit skip_deps=true
+	@$(REBAR) eunit apps=$(TEST_APPS) suites=$(TEST_SUITES) tests=$(TEST_TESTS) skip_deps=true
 	@echo "Done."
 
 dialyze:
-	@$(DIALYZER) -n -I $(INCLUDE_DIR) --src $(SRC_DIR)/llsn.erl
+	@$(DIALYZER) -n -I $(INCLUDE_DIR) --src $(SRC_DIR)/*.erl
 	@echo "Done."

@@ -33,7 +33,7 @@
 %% includes
 -include_lib("include/llsn.hrl").
 
--define(APPS, [ syntax_tools, compiler, goldrush, lager ]).
+-define(APPS, []).
 
 
 reload_m(M) ->
@@ -49,18 +49,7 @@ reload() ->
 
 
 start() ->
-    ?LOG("Start apps: ~p", [?APPS]),
-    application:load(lager),
-    application:set_env(lager, handlers,
-        [
-            {lager_console_backend, info},
-            {lager_file_backend, [{file, "./log/run.log"}, {level, debug}]}
-        ]
-    ),
     ok = ensure_started(?APPS),
-
-    ok = sync:go(),
-    sync:growl(none),
     ok.
 
 stop() ->

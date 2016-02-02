@@ -32,6 +32,8 @@
 
 -export([decode/1, decode/3]).
 
+-export([type_id/1, type_name/1]).
+
 -export([decode_NUMBER/1, decode_UNUMBER/1]).
 -export ([decode_DATE/1, encode_DATE/1]).
 
@@ -1298,3 +1300,44 @@ encode_nullflag_create(ValueList) ->
         end,
         [], ValueList ),
     {lists:reverse(ReversedNullFlags),0}.
+
+type_name(?LLSN_TYPE_NUMBER) ->    number;
+type_name(?LLSN_TYPE_FLOAT)  ->    float;
+type_name(?LLSN_TYPE_STRING) ->    string;
+type_name(?LLSN_TYPE_BLOB) ->      blob;
+type_name(?LLSN_TYPE_FILE) ->      file;
+type_name(?LLSN_TYPE_DATE) ->      date;
+type_name(?LLSN_TYPE_BOOL) ->      boolean;
+type_name(?LLSN_TYPE_STRUCT) ->    struct;
+type_name(?LLSN_TYPE_ARRAY)  ->    array;
+type_name(_)                 ->    undefined.
+
+
+type_id(number) ->         ?LLSN_TYPE_NUMBER;
+type_id("number") ->       ?LLSN_TYPE_NUMBER;
+type_id(<<"number">>) ->   ?LLSN_TYPE_NUMBER;
+type_id(float) ->          ?LLSN_TYPE_FLOAT;
+type_id("float") ->        ?LLSN_TYPE_FLOAT;
+type_id(<<"float">>) ->    ?LLSN_TYPE_FLOAT;
+type_id(string) ->         ?LLSN_TYPE_STRING;
+type_id("string") ->       ?LLSN_TYPE_STRING;
+type_id(<<"string">>) ->   ?LLSN_TYPE_STRING;
+type_id(blob) ->           ?LLSN_TYPE_BLOB;
+type_id("blob") ->         ?LLSN_TYPE_BLOB;
+type_id(<<"blob">>) ->     ?LLSN_TYPE_BLOB;
+type_id(file) ->           ?LLSN_TYPE_FILE;
+type_id("file") ->         ?LLSN_TYPE_FILE;
+type_id(<<"file">>) ->     ?LLSN_TYPE_FILE;
+type_id(date) ->           ?LLSN_TYPE_DATE;
+type_id("date") ->         ?LLSN_TYPE_DATE;
+type_id(<<"date">>) ->     ?LLSN_TYPE_DATE;
+type_id(boolean) ->        ?LLSN_TYPE_BOOL;
+type_id("boolean") ->      ?LLSN_TYPE_BOOL;
+type_id(<<"boolean">>) ->  ?LLSN_TYPE_BOOL;
+type_id(struct) ->         ?LLSN_TYPE_STRUCT;
+type_id("struct") ->       ?LLSN_TYPE_STRUCT;
+type_id(<<"struct">>) ->   ?LLSN_TYPE_STRUCT;
+type_id(array) ->          ?LLSN_TYPE_ARRAY;
+type_id("array") ->        ?LLSN_TYPE_ARRAY;
+type_id(<<"array">>) ->    ?LLSN_TYPE_ARRAY;
+type_id(_) ->              ?LLSN_TYPE_UNDEFINED.

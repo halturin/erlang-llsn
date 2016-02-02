@@ -98,14 +98,3 @@
 
 -define (LLSN_FILE(File),          #llsn_file{name = filename:basename(File), origin = File}).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% for development purposes only
-%%
--define(DBG(Format),                lager:log(debug, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE])).
--define(DBG(Format, Data),          lager:log(debug, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE | Data])).
-
--define(LOG(Format),                lager:log(info, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE])).
--define(LOG(Format, Data),          lager:log(info, self(), "~p:~p: " ++ Format, [?MODULE, ?LINE | Data])).
-
-%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
